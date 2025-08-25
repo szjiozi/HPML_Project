@@ -47,7 +47,7 @@ class LongRefiner:
             "query_analysis": {
                 "lora_path": query_analysis_module_lora_path,
                 "lora_request": LoRARequest(
-                    lora_name="query_analysis", lora_int_id=0, lora_path=query_analysis_module_lora_path
+                    lora_name="query_analysis", lora_int_id=1, lora_path=query_analysis_module_lora_path
                 ),
                 "sampling_params": SamplingParams(temperature=0, max_tokens=2, logprobs=20),
                 "prompt_template": PromptTemplate(
@@ -57,7 +57,7 @@ class LongRefiner:
             "doc_structuring": {
                 "lora_path": doc_structuring_module_lora_path,
                 "lora_request": LoRARequest(
-                    lora_name="doc_structuring", lora_int_id=1, lora_path=doc_structuring_module_lora_path
+                    lora_name="doc_structuring", lora_int_id=2, lora_path=doc_structuring_module_lora_path
                 ),
                 "sampling_params": SamplingParams(temperature=0, max_tokens=10000),
                 "prompt_template": PromptTemplate(
@@ -67,7 +67,7 @@ class LongRefiner:
             "global_selection": {
                 "lora_path": global_selection_module_lora_path,
                 "lora_request": LoRARequest(
-                    lora_name="global_selection", lora_int_id=2, lora_path=global_selection_module_lora_path
+                    lora_name="global_selection", lora_int_id=3, lora_path=global_selection_module_lora_path
                 ),
                 "sampling_params": SamplingParams(temperature=0, max_tokens=10000),
                 "prompt_template": PromptTemplate(
@@ -839,7 +839,7 @@ class LongRefiner:
                         pass
                     else:
                         if isinstance(section_dict["content"], list):
-                            chunk_content += "\n".join(section_dict["content"])
+                            node_content += "\n".join(section_dict["content"])
                         else:
                             node_content = section_dict["content"]
                         node_content += "\n"
@@ -847,7 +847,7 @@ class LongRefiner:
                         sub_idx = 1
                         for subsection, subsection_content in section_dict["subsections"].items():
                             if subsection_content != "":
-                                chunk_content += f"Subsection {sub_idx}: {subsection}: \n{subsection_content}"
+                                node_content += f"Subsection {sub_idx}: {subsection}: \n{subsection_content}"
                                 sub_idx += 1
                 elif node["type"] == "subsection":
                     section_title = node["parent"]
