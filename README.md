@@ -146,16 +146,19 @@ The demo will visualize inference latency, VRAM usage, and answer quality side b
 
 ## 9. References
 
-**[1]** Jin, J. et al. *Hierarchical Document Refinement for Long-context Retrieval-Augmented Generation.* arXiv:2505.10413 (2025).  
+**[1] Jiajie Jin, Xiaoxi Li, Guanting Dong, Yuyao Zhang, Yutao Zhu, Yongkang Wu, Zhonghua Li, Ye Qi, and Zhicheng Dou. 2025. Hierarchical Document Refinement for Long-context Retrieval-augmented Generation. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages 3502–3520, Vienna, Austria. Association for Computational Linguistics.** 
+
 **Contribution:** Introduced LongRefiner, a multi-stage framework integrating Hierarchical Document Structuring (HDS), Dual-Level Query Analysis (DQA), and Adaptive Document Refinement (ADR). It achieved superior QA performance by modeling document hierarchy and query granularity jointly.  
 
-**[2]** Dettmers, T. et al. *QLoRA: Efficient Finetuning of Quantized Large Language Models.* ICLR (2023).  
+**[2] Dettmers, T., Pagnoni, A., Holtzman, A., & Zettlemoyer, L. (2023). Qlora: Efficient finetuning of quantized llms. Advances in neural information processing systems, 36, 10088-10115.**  
+
 **Contribution:** Proposed quantization-aware LoRA fine-tuning using 4-bit NF4 quantization, achieving near full-precision performance while reducing memory consumption by over 60%.  
 
-**[3]** Hu, E. et al. *LoRA: Low-Rank Adaptation of Large Language Models.* ICLR (2022).  
+**[3] Hu, E. J., Shen, Y., Wallis, P., Allen-Zhu, Z., Li, Y., Wang, S., ... & Chen, W. (2022). Lora: Low-rank adaptation of large language models. ICLR, 1(2), 3.**  
+
 **Contribution:** Introduced LoRA, a parameter-efficient method for fine-tuning large language models by injecting low-rank adapters, allowing rapid adaptation with minimal training cost.  
 
 **How Our Work Builds on These:**  
 Our project combines the parameter-efficient LoRA framework [3] and quantization-aware optimization from QLoRA [2] into the structured reasoning framework of LongRefiner [1].  
-While previous studies applied QLoRA mainly to generic text generation, we evaluate its impact on structured, multi-stage reasoning tasks such as DQA and ADR.  
+While previous studies applied QLoRA mainly to generic text generation, we evaluate its impact on structured, multi-stage RAG tasks.  
 By systematically comparing full-precision, post-training quantized, and quantization-aware fine-tuning setups, we aim to provide insights into how quantization affects reasoning stability and retrieval accuracy within the LongRefiner pipeline.
