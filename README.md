@@ -29,9 +29,9 @@ The study compares three versions of student fine-tuning pipelines under identic
 
 | Group | Training Mode | Quantization Stage | Backbone | Adapter Precision |
 |--------|----------------|--------------------|-----------|--------------------|
-| A. Full LoRA (Baseline) | FP16 training | None | Qwen 1.5B | FP16 |
-| B. LoRA + PTQ | FP16 training | Post-training (int8/int4) | Qwen 1.5B | FP16 |
-| C. QLoRA | 4-bit NF4 training (quantization-aware) | During training | Qwen 1.5B | FP16 |
+| A. Full LoRA (Baseline) | FP16 training | None | Qwen 0.5B | FP16 |
+| B. LoRA + PTQ | FP16 training | Post-training (int8/int4) | Qwen 0.5B | FP16 |
+| C. QLoRA | 4-bit NF4 training (quantization-aware) | During training | Qwen 0.5B | FP16 |
 
 ### Dual-Level Query Analysis (DQA)
 - **Input:** Query text  
@@ -48,11 +48,10 @@ The study compares three versions of student fine-tuning pipelines under identic
 | Component | Description |
 |------------|-------------|
 | **Hardware** | NVIDIA A100 (baseline) and RTX 4090 / RTX 3060 (edge simulation) |
-| **Compute Type** | Local GPU nodes; no TPU or cloud cluster dependency |
-| **Software** | PyTorch, Hugging Face Transformers, PEFT, bitsandbytes, AutoGPTQ, FlashAttention-2 |
-| **Existing Codebase** | LongRefiner GitHub repository for teacher model and preprocessing scripts |
-| **Dataset** | - DQA: Natural Questions (NQ), TriviaQA queries  <br> - ADR: Same datasets with teacher-generated document outlines (50k samples)  <br> - Teacher supervision: 3B LongRefiner outputs |
-| **Quantization Configs** | - PTQ: int8 / int4 quantization via AutoGPTQ (calibrated subset)  <br> - QLoRA: NF4 4-bit quantization, compute_dtype = bfloat16 |
+| **Compute Type** | Local GPU nodes in NYU HPC;|
+| **Software** | PyTorch, Hugging Face Transformers, PEFT, bitsandbytes |
+| **Existing Codebase** | [LongRefiner GitHub repository](https://github.com/ignorejjj/LongRefiner) for teacher model inference code, [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) for training code and [FlashRAG](https://github.com/RUC-NLPIR/FlashRAG) for dataset and inference|
+| **Dataset** | The training dataset is constructed using the version collected by FlashRAG(dataset detail can be seen in the evaluation part). We use the first 10,000 samples from the training set of each dataset, which are merged to form the final dataset.|
 
 ## 7. Evaluation Details
 
@@ -71,11 +70,9 @@ We evaluate on **seven open-domain QA datasets** covering single-hop, multi-hop,
 
 | Type | Dataset | Description |
 |------|----------|--------------|
-| Single-hop | NQ, TriviaQA | Fact-based QA tasks |
+| Single-hop | NQ, TriviaQA, PopQA | Fact-based QA tasks |
 | Multi-hop | HotpotQA, 2Wiki | Require multi-step reasoning |
-| Long-form | ASQA, ELI5, PopQA | Require extended contextual retrieval and synthesis |
-
-All experiments are performed under a **2k token context limit**, following the LongRefiner paper setup, while the full-content baseline (unlimited tokens) is used for reference only.
+| Long-form | ASQA, ELI5  | Require extended contextual retrieval and synthesis |
 
 ---
 
@@ -99,14 +96,14 @@ In addition to task performance, we evaluate both **training** and **inference**
 | **Training VRAM (GB)** | Peak GPU memory consumption during fine-tuning |
 | **Throughput (samples/s)** | Number of processed samples per second |
 | **Training Time per Epoch (min)** | Total time for one full epoch |
-| **Power Draw (W)** | Average GPU power consumption during training |
+| **Total Training FLOPs (TFLOPs)** | Estimated total compute used for convergence, derived as `FLOPs/step × #steps × #GPUs` |
 
 #### **Inference Metrics**
 | Metric | Description |
 |---------|--------------|
 | **Inference VRAM (GB)** | Memory usage during model inference |
 | **Latency (ms/sample)** | End-to-end inference time per query |
-| **Energy per Query (J)** | Total energy consumed per query (Power × Time) |
+| **FLOPs per Query (GFLOPs)** | Estimated number of operations required to process a single inference request |
 | **Model Size (GB)** | Disk size of quantized vs. full-precision checkpoints |
 
 These metrics will quantify the trade-offs between computational efficiency and model quality under different quantization strategies.
@@ -118,13 +115,13 @@ Each model variant will be evaluated across all QA datasets and system metrics.
 The final analysis will include:
 
 1. **Performance Retention:**  
-   F1 difference between Full LoRA and QLoRA/LoRA+PTQ.
+   F1 and Accuracy difference between Full LoRA and QLoRA/LoRA+PTQ.
 
 2. **Efficiency Gains:**  
-   Relative reduction in training VRAM, inference latency, and total power usage.
+   Relative reduction in training VRAM, inference latency, and FLOPs.
 
 3. **Pareto Frontier Visualization:**  
-   Plot *Accuracy (F1)* vs. *Efficiency (VRAM/Latency)* to highlight optimal trade-offs.
+   Plot *Accuracy (F1)* vs. *Efficiency (VRAM/Latency/FLOPs)* to highlight optimal trade-offs.
 
 4. **Convergence Curves:**  
    Compare validation loss and F1 progression across training steps to assess QLoRA stability.
@@ -132,7 +129,7 @@ The final analysis will include:
 ---
 
 ### **f. Expected Outcomes**
-- **QLoRA** is expected to retain ≥ 98 % of full-precision accuracy while reducing both training and inference memory by **60–70 %**.  
+- **QLoRA** is expected to retain a comparable accuracy with full-precision accuracy while reducing both training and inference memory.  
 - **LoRA + PTQ** may exhibit higher quantization error under int4 settings but similar inference efficiency.  
 - **Full LoRA** will serve as the upper performance bound but with significantly higher computational cost.
 
@@ -145,8 +142,7 @@ Users can input a question, and the system will display:
 - ADR-selected document nodes  
 - Final retrieved context and generated QA answer  
 
-The demo will visualize inference latency, VRAM usage, and answer quality side by side for each variant (Full LoRA, LoRA+PTQ, QLoRA).  
-All models will run on a single consumer GPU (e.g., RTX 3060) to demonstrate deployability on edge hardware.
+The demo will visualize inference latency, VRAM usage, and answer quality side by side for each variant (Full LoRA, LoRA+PTQ, QLoRA).
 
 ## 9. References
 
@@ -163,9 +159,3 @@ All models will run on a single consumer GPU (e.g., RTX 3060) to demonstrate dep
 Our project combines the parameter-efficient LoRA framework [3] and quantization-aware optimization from QLoRA [2] into the structured reasoning framework of LongRefiner [1].  
 While previous studies applied QLoRA mainly to generic text generation, we evaluate its impact on structured, multi-stage reasoning tasks such as DQA and ADR.  
 By systematically comparing full-precision, post-training quantized, and quantization-aware fine-tuning setups, we aim to provide insights into how quantization affects reasoning stability and retrieval accuracy within the LongRefiner pipeline.
-
-### Deliverables Summary
-- A detailed comparison of Full LoRA, LoRA+PTQ, and QLoRA on efficiency and accuracy.  
-- Pareto frontier plots of performance–efficiency trade-offs.  
-- A lightweight, deployable LongRefiner student model.  
-- Final report analyzing when quantization-aware training is most beneficial for structured reasoning tasks.
