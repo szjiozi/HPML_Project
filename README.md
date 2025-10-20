@@ -63,8 +63,6 @@ The evaluation is designed to assess both **task performance** and **system effi
 
 We will reproduce the **open-domain QA benchmark results** similar to Table 2 in *LongRefiner (Jin et al., 2025)*, while extending the evaluation with detailed **training and inference metrics** to capture system-level efficiency.
 
----
-
 ### **b. Benchmark Datasets**
 We evaluate on **seven open-domain QA datasets** covering single-hop, multi-hop, and long-form question answering:
 
@@ -74,8 +72,6 @@ We evaluate on **seven open-domain QA datasets** covering single-hop, multi-hop,
 | Multi-hop | HotpotQA, 2Wiki | Require multi-step reasoning |
 | Long-form | ASQA, ELI5  | Require extended contextual retrieval and synthesis |
 
----
-
 ### **c. Task-Level Metrics**
 We report **accuracy (Acc)** and **F1 score** for each dataset to evaluate reasoning quality and answer overlap, consistent with the LongRefiner benchmark.  
 
@@ -84,8 +80,6 @@ We report **accuracy (Acc)** and **F1 score** for each dataset to evaluate reaso
 | **Acc** | Exact match rate of predicted answers |
 | **F1** | Token-level harmonic mean of precision and recall |
 | **Avg. F1** | Averaged across all datasets as overall QA performance |
-
----
 
 ### **d. System-Level Metrics**
 In addition to task performance, we evaluate both **training** and **inference** efficiency:
@@ -108,8 +102,6 @@ In addition to task performance, we evaluate both **training** and **inference**
 
 These metrics will quantify the trade-offs between computational efficiency and model quality under different quantization strategies.
 
----
-
 ### **e. Comparative Analysis**
 Each model variant will be evaluated across all QA datasets and system metrics.  
 The final analysis will include:
@@ -125,8 +117,6 @@ The final analysis will include:
 
 4. **Convergence Curves:**  
    Compare validation loss and F1 progression across training steps to assess QLoRA stability.
-
----
 
 ### **f. Expected Outcomes**
 - **QLoRA** is expected to retain a comparable accuracy with full-precision accuracy while reducing both training and inference memory.  
