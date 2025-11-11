@@ -1,4 +1,4 @@
-import os 
+import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 import json
 from longrefiner import LongRefiner
@@ -15,8 +15,7 @@ refiner = LongRefiner(
     global_selection_module_lora_path=selection_module_lora_path,
     score_model_name="bge-reranker-v2-m3",
     score_model_path="BAAI/bge-reranker-v2-m3",
-    max_model_len=8192, # Using a smaller max_model_len for local testing
-    use_quantization=True, # Enable quantization to reduce memory usage
+    max_model_len=25000,
 )
 
 # Load sample data
@@ -27,4 +26,4 @@ document_list = list(data.values())[0][:5]
 
 # Process documents
 refined_result = refiner.run(question, document_list, budget=2048)
-print(json.dumps(refined_result, indent=2, ensure_ascii=False))
+print(refined_result)

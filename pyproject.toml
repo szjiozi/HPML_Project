@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "longrefiner"
 version = "0.1.0"
-description = "Hierarchical Document Refinement for Long-context Retrieval-augmented Generation, with added support for Apple Silicon."
+description = "Hierarchical Document Refinement for Long-context Retrieval-augmented Generation, optimized for HPC execution."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
@@ -21,6 +21,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
+    "vllm",
     "transformers",
     "rank_bm25",
     "tqdm",
@@ -29,16 +30,8 @@ dependencies = [
     "torch",
     "tiktoken",
     "flashrag-dev",
-    "peft",
-    "accelerate",
-    "python-dotenv",
-    "sentencepiece",
-    "vllm; sys_platform == 'linux'",
+    "sentencepiece"
 ]
-
-[project.optional-dependencies]
-vllm = ["vllm"]
-quantization = ["bitsandbytes; sys_platform == 'linux'"]
 
 [project.urls]
 Homepage = "https://github.com/iridiumtao/LongRefiner"
@@ -46,13 +39,13 @@ Repository = "https://github.com/iridiumtao/LongRefiner"
 
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cu118", marker = "sys_platform == 'linux'" },
+  { index = "pytorch-cu118" },
 ]
 torchvision = [
-  { index = "pytorch-cu118", marker = "sys_platform == 'linux'" },
+  { index = "pytorch-cu118" },
 ]
 torchaudio = [
-  { index = "pytorch-cu118", marker = "sys_platform == 'linux'" },
+  { index = "pytorch-cu118" },
 ]
 
 [[tool.uv.index]]
