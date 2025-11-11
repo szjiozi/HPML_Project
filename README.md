@@ -52,6 +52,9 @@ uv pip install -e .
 
 # For NVIDIA GPU users, install with vllm extras for high performance
 uv pip install -e ".[vllm]"
+
+# To use memory-saving 4-bit quantization (recommended for local use):
+uv pip install -e ".[quantization]"
 ```
 > **Why `uv` and `pyproject.toml`?**
 > Using a `pyproject.toml` file provides a standardized way to define project metadata and dependencies. `uv` is an extremely fast Python package installer and resolver that reads this file, making the process of setting up development environments significantly faster and more reliable than traditional methods.

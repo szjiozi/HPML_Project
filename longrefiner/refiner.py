@@ -22,6 +22,7 @@ class LongRefiner:
         score_model_name: str = "bge-reranker-v2-m3",
         score_model_path: str = "BAAI/bge-reranker-v2-m3",
         max_model_len: int = 25000,
+        **kwargs, # Accept and ignore extra arguments for compatibility
     ):
         # load refine model
         self._load_trained_model(

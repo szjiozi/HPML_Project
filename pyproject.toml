@@ -32,11 +32,13 @@ dependencies = [
     "peft",
     "accelerate",
     "python-dotenv",
+    "sentencepiece",
     "vllm; sys_platform == 'linux'",
 ]
 
 [project.optional-dependencies]
 vllm = ["vllm"]
+quantization = ["bitsandbytes; sys_platform == 'linux'"]
 
 [project.urls]
 Homepage = "https://github.com/iridiumtao/LongRefiner"

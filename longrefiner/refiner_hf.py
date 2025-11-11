@@ -1,15 +1,23 @@
 import json
 import re
+import gc
 from typing import List, Tuple
 from tqdm import tqdm
 import numpy as np
 import json_repair
 import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModel, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModel, AutoModelForCausalLM
 from peft import PeftModel
 
 from .prompt_template import PromptTemplate
 from .task_instruction import *
+
+try:
+    from transformers import BitsAndBytesConfig
+    is_bitsandbytes_available = True
+except ImportError:
+    BitsAndBytesConfig = None
+    is_bitsandbytes_available = False
 
 
 class LongRefinerHF:
@@ -21,7 +29,7 @@ class LongRefinerHF:
         global_selection_module_lora_path: str = "",
         score_model_name: str = "bge-reranker-v2-m3",
         score_model_path: str = "BAAI/bge-reranker-v2-m3",
-        max_model_len: int = 25000,
+        max_model_len: int = 8192, # Reduced default for local machines
         use_quantization: bool = False,
     ):
         if torch.backends.mps.is_available():
@@ -31,6 +39,7 @@ class LongRefinerHF:
         else:
             self.device = torch.device("cpu")
         
+        self.max_model_len = max_model_len
         print(f"Using device: {self.device}")
 
         # load refine model
@@ -55,19 +64,30 @@ class LongRefinerHF:
     ):
         quantization_config = None
         if use_quantization:
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.bfloat16,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_use_double_quant=True,
-            )
+            if not is_bitsandbytes_available or not torch.cuda.is_available():
+                print(
+                    "Warning: Quantization is requested, but 'bitsandbytes' is not available or CUDA is not detected. "
+                    "Proceeding without quantization. For quantization support, please install with CUDA and run `uv pip install -e '.[quantization]'`."
+                )
+            else:
+                quantization_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.bfloat16,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_use_double_quant=True,
+                )
 
         self.tokenizer = AutoTokenizer.from_pretrained(base_model_path)
+        
+        # Determine device_map for model loading
+        device_map = "auto"
+        if self.device.type == "mps":
+             device_map = {"": self.device} # Pin to MPS device if available
         
         model = AutoModelForCausalLM.from_pretrained(
             base_model_path,
             torch_dtype=torch.bfloat16,
-            device_map=self.device,
+            device_map=device_map,
             quantization_config=quantization_config,
             trust_remote_code=True
         )
@@ -79,21 +99,21 @@ class LongRefinerHF:
         self.step_to_config = {
             "query_analysis": {
                 "lora_name": "query_analysis",
-                "sampling_params": {"temperature": 0, "max_new_tokens": 2, "return_dict_in_generate": True, "output_logprobs": True},
+                "sampling_params": {"temperature": 1e-5, "max_new_tokens": 2, "return_dict_in_generate": True, "output_scores": True},
                 "prompt_template": PromptTemplate(
                     self.tokenizer, system_prompt=SYSTEM_PROMPT_STEP1, user_prompt=USER_PROMPT_STEP1
                 ),
             },
             "doc_structuring": {
                 "lora_name": "doc_structuring",
-                "sampling_params": {"temperature": 0, "max_new_tokens": 10000},
+                "sampling_params": {"temperature": 1e-5, "max_new_tokens": 10000},
                 "prompt_template": PromptTemplate(
                     self.tokenizer, system_prompt=SYSTEM_PROMPT_STEP2, user_prompt=USER_PROMPT_STEP2
                 ),
             },
             "global_selection": {
                 "lora_name": "global_selection",
-                "sampling_params": {"temperature": 0, "max_new_tokens": 10000},
+                "sampling_params": {"temperature": 1e-5, "max_new_tokens": 10000},
                 "prompt_template": PromptTemplate(
                     self.tokenizer, system_prompt=SYSTEM_PROMPT_STEP3, user_prompt=USER_PROMPT_STEP3
                 ),
@@ -270,15 +290,19 @@ class LongRefinerHF:
             with torch.no_grad():
                 output = self.model.generate(**inputs, **sampling_params)
             
-            # Extract logprobs
-            logprobs = output.logprobs[0][0] # First token of first sequence
+            # Extract logprobs from scores
+            scores = output.scores[0] # First token scores
+            logprobs = torch.nn.functional.log_softmax(scores, dim=-1)
+
             special_token = ["Local", "Global"]
             special_token_ids = {self.tokenizer.encode(token, add_special_tokens=False)[0]: token for token in special_token}
             
-            special_token_prob = {token: -100 for token in special_token}
-            for token_id, logprob in logprobs.items():
-                if token_id.item() in special_token_ids:
-                    special_token_prob[special_token_ids[token_id.item()]] = logprob.item()
+            special_token_prob = {token: -100.0 for token in special_token}
+
+            for token_id, token_str in special_token_ids.items():
+                 # Check if the token_id is within the vocab size
+                if token_id < logprobs.shape[1]:
+                    special_token_prob[token_str] = logprobs[0, token_id].item()
 
             for k, v in special_token_prob.items():
                 special_token_prob[k] = np.exp(v)
@@ -318,6 +342,12 @@ class LongRefinerHF:
              # The generated text is often a continuation of the prompt, we need to extract the response part.
              response_text = output_text[len(prompt):]
              outputs_text.append(response_text)
+
+             # Explicitly free memory
+             del inputs, output_ids
+             if self.device.type == 'mps':
+                torch.mps.empty_cache()
+             gc.collect()
         
         structured_doc_list = []
         start_idx = 0
@@ -374,6 +404,12 @@ class LongRefinerHF:
             response_text = output_text[len(prompt):]
             outputs_text.append(response_text)
 
+            # Explicitly free memory
+            del inputs, output_ids
+            if self.device.type == 'mps':
+                torch.mps.empty_cache()
+            gc.collect()
+
         global_selection_result = []
         idx = 0
         for question, item_doc_list in zip(question_list, structured_doc_list):
@@ -395,8 +431,15 @@ class LongRefinerHF:
     # All helper methods from _truncate_doc_content onwards can be copied from the original refiner.py
     # as they are backend-agnostic. I'm copying them here.
 
-    def _truncate_doc_content(self, doc_content: str, max_length: int = 25000) -> str:
+    def _truncate_doc_content(self, doc_content: str) -> str:
+        """
+        Args:
+            doc_content: str, the content of the document
+        Output:
+            str, the truncated document content
+        """
         tokenized_content = self.tokenizer(doc_content, truncation=False, return_tensors="pt").input_ids[0]
+        max_length = self.max_model_len
         half = max_length // 2
         if len(tokenized_content) > max_length:
             doc_content = self.tokenizer.decode(
