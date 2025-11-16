@@ -779,7 +779,7 @@ class LongRefiner:
 
         # select by budget(ratio)
         refined_node_list = self.select_by_budget(
-            question_list, doc_structuring_result, all_nodes, idx2node, budget, ratio
+            question_list, document_list, doc_structuring_result, all_nodes, idx2node, budget, ratio
         )
         for item_node_list in refined_node_list:
             for node in item_node_list:
@@ -792,6 +792,7 @@ class LongRefiner:
     def select_by_budget(
         self,
         question_list: List[str],
+        document_list: List[List[dict]],
         structured_document_list: List[List[dict]],
         all_nodes: List[dict],
         idx2node: dict,
@@ -804,18 +805,23 @@ class LongRefiner:
                 ratio is not None and ratio > 0 and ratio < 1
             ), "budget is None, ratio must be a float between 0 and 1"
             idx2budget = {}
-            for idx in idx2node:
+            for idx in range(len(question_list)):
                 item_documents = document_list[idx]
                 doc_contents = " ".join([doc["contents"] for doc in item_documents])
                 doc_length = len(self.tokenizer(doc_contents)["input_ids"])
                 budget = int(doc_length * ratio)
                 idx2budget[idx] = budget
         else:
-            idx2budget = {idx: budget for idx in idx2node}
+            idx2budget = {idx: budget for idx in range(len(question_list))}
 
         # final selection
         result_nodes = []
-        for idx, node_list in tqdm(idx2node.items()):
+        # Ensure we process all questions, even if idx2node is empty
+        for idx in range(len(question_list)):
+            if idx not in idx2node:
+                result_nodes.append([])
+                continue
+            node_list = idx2node[idx]
             # use a large budget for pre selection
             budget = idx2budget[idx] * 2
             question = question_list[idx]
