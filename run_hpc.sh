@@ -3,6 +3,7 @@
 #
 #SBATCH --job-name=long_refiner_job   # Job name
 #SBATCH --account=ece_gy_9143-2025fa
+#SBATCH --partition=c12m85-a100-1
 #SBATCH --output=slurm_logs/job_%j.out      # %j will be replaced with the Job ID
 #SBATCH --error=slurm_logs/job_%j.err       # %j will be replaced with the Job ID
 #SBATCH --time=04:00:00                 # Maximum job run time (HH:MM:SS)
