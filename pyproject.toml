@@ -32,7 +32,8 @@ dependencies = [
     "torchaudio",
     "tiktoken",
     "flashrag-dev",
-    "sentencepiece"
+    "sentencepiece",
+    "wandb"
 ]
 
 [project.urls]

@@ -27,6 +27,7 @@ LongRefiner is an efficient plug-and-play refinement system for long-context RAG
 
 *   **Modern Dependency Management**: Utilizes `uv` and `pyproject.toml` for fast, reliable, and easy-to-manage dependency installation. This replaces `requirements.txt` for clearer separation of dependencies and better project structure.
 *   **HPC Execution Script**: Includes a complete execution script (`run_hpc.sh`) that automates environment setup and program execution on HPC clusters, handling CUDA checks, Python version verification, dependency installation, and program execution.
+*   **Weights & Biases Integration**: Comprehensive wandb integration for tracking training and inference metrics, with detailed documentation and example scripts.
 *   **Original Features**: All original features of LongRefiner are preserved.
 
 ## 🛠️ Installation
@@ -154,6 +155,22 @@ llamafactory-cli train train_config_step2.yaml
 # Train global selection module
 llamafactory-cli train train_config_step3.yaml  
 ```
+
+### 📊 Weights & Biases (wandb) Integration
+
+This project includes comprehensive support for tracking training and inference metrics using [Weights & Biases (wandb)](https://wandb.ai/). 
+
+For detailed instructions on how to integrate wandb into your training pipeline, including:
+- Installation and authentication (especially for HPC environments)
+- Recording training metrics (loss, accuracy, F1, VRAM, FLOPs, etc.)
+- Recording inference metrics (latency, VRAM usage)
+- Visualizing results in the wandb dashboard
+
+Please refer to the [wandb Integration Guide](docs/WANDB_INTEGRATION.md).
+
+Example scripts are also provided:
+- `scripts/training/train_with_wandb_example.py` - Example training script with wandb integration
+- `scripts/training/inference_benchmark_wandb.py` - Example inference benchmarking script with wandb
 
 ## 📊 Evaluation
 
