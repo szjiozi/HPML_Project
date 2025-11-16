@@ -1,7 +1,7 @@
 # <div align="center">LongRefiner | Hierarchical Document Refinement for Long-context Retrieval-augmented Generation</div>
 <div align="center">
 
-**This is a fork of the original [LongRefiner](https://github.com/jinjiajie/LongRefiner) repository with added support for Apple Silicon (macOS) and modernized dependency management using [uv](https://github.com/astral-sh/uv).**
+**This is a fork of the original [LongRefiner](https://github.com/jinjiajie/LongRefiner) repository that uses [uv](https://github.com/astral-sh/uv) for package management and includes a complete HPC execution script for running the program on high-performance computing clusters.**
 
 </div>
 
@@ -25,8 +25,8 @@ LongRefiner is an efficient plug-and-play refinement system for long-context RAG
 
 ## ✨ Key Features of this Fork
 
-*   **Cross-Platform Execution**: Run inference on both NVIDIA GPUs (via `vllm`) for high performance and Apple Silicon Macs (via Hugging Face `transformers`) for local development and debugging.
 *   **Modern Dependency Management**: Utilizes `uv` and `pyproject.toml` for fast, reliable, and easy-to-manage dependency installation. This replaces `requirements.txt` for clearer separation of dependencies and better project structure.
+*   **HPC Execution Script**: Includes a complete execution script (`run_hpc.sh`) that automates environment setup and program execution on HPC clusters, handling CUDA checks, Python version verification, dependency installation, and program execution.
 *   **Original Features**: All original features of LongRefiner are preserved.
 
 ## 🛠️ Installation
@@ -39,51 +39,68 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-Then, create a virtual environment and install the dependencies:
+Then, sync the project environment and install all dependencies:
 ```bash
-# Create venv
-uv venv
-
-# Activate venv
-source .venv/bin/activate
-
-# Install base dependencies (for Apple Silicon / CPU)
-uv pip install -e .
-
-# For NVIDIA GPU users, install with vllm extras for high performance
-uv pip install -e ".[vllm]"
-
-# To use memory-saving 4-bit quantization (recommended for local use):
-uv pip install -e ".[quantization]"
+# Sync project dependencies (creates .venv automatically if needed)
+uv sync
 ```
+
+This will:
+- Create a virtual environment (`.venv`) if it doesn't exist
+- Install all dependencies defined in `pyproject.toml` (including `vllm`, `transformers`, `torch`, etc.)
+- Install the project itself in editable mode
+- Use the PyTorch CUDA 11.8 index for optimized GPU support
+
 > **Why `uv` and `pyproject.toml`?**
-> Using a `pyproject.toml` file provides a standardized way to define project metadata and dependencies. `uv` is an extremely fast Python package installer and resolver that reads this file, making the process of setting up development environments significantly faster and more reliable than traditional methods.
-
-### ⚙️ Configuration
-
-You can control which backend the library uses via an environment variable. Create a `.env` file in the root of the project by copying the example:
-
-```bash
-cp .env.example .env
-```
-
-Then, edit the `.env` file to choose your desired backend (`hf` or `vllm`). The library will automatically load this setting when it starts.
+> Using a `pyproject.toml` file provides a standardized way to define project metadata and dependencies. `uv` is an extremely fast Python package installer and resolver that reads this file, making the process of setting up development environments significantly faster and more reliable than traditional methods. The project is configured to use PyTorch with CUDA 11.8 support for optimal performance on NVIDIA GPUs.
 
 ## 🚀 Quick Start
 
-The project will automatically detect the appropriate backend (`vllm` for HPC with NVIDIA GPUs, `hf` for Apple Silicon and others). You can override this behavior by setting the `LONGREFINER_BACKEND` environment variable to either `"vllm"` or `"hf"`.
+### Running on HPC Clusters
 
-For example, to force the Hugging Face backend on a machine where `vllm` is installed:
+For HPC environments, use the provided execution script which handles all setup automatically:
+
 ```bash
-export LONGREFINER_BACKEND="hf"
+bash run_hpc.sh
+```
+
+This script will:
+- Check for CUDA availability
+- Verify Python version compatibility
+- Install `uv` if not present
+- Sync project dependencies using `uv sync`
+- Execute the quick start example using `uv run`
+
+### Manual Execution
+
+You can run Python scripts using `uv run`, which automatically uses the project's virtual environment:
+
+```bash
+# Run a script with uv run (no need to activate venv)
+uv run python your_script.py
+```
+
+Or use the provided quick start script:
+
+```bash
+uv run python scripts/quick_start.py
+```
+
+If you prefer the traditional approach, you can also activate the virtual environment manually:
+
+```bash
+# Activate the virtual environment
+source .venv/bin/activate
+
+# Then run your script
 python your_script.py
 ```
 
-Below is a unified code example. It will work on any platform.
+Below is a code example you can use in your own scripts:
 
 ```python
 import json
-from longrefiner import LongRefiner # Dynamically selected based on your environment
+from longrefiner import LongRefiner
 
 # Initialize
 refiner = LongRefiner(
@@ -122,7 +139,8 @@ Training remains unchanged. For training purposes, please additionally install t
 ```bash
 git clone --depth 1 https://github.com/hiyouga/LLaMA-Factory.git
 cd LLaMA-Factory
-uv pip install -e ".[torch,metrics]"
+# If Llama-Factory uses uv, use uv sync; otherwise use their installation method
+# Check their README for the recommended installation approach
 ```
 
 Before training, prepare the datasets for three tasks in JSON format. Reference samples can be found in the training_data folder. We use the `Llama-Factory` framework for training. After setting up the training data, run:
