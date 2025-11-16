@@ -1,4 +1,17 @@
 #!/bin/bash
+#
+#
+#SBATCH --job-name=long_refiner_job   # Job name
+#SBATCH --output=slurm_logs/job_%j.out      # %j will be replaced with the Job ID
+#SBATCH --error=slurm_logs/job_%j.err       # %j will be replaced with the Job ID
+#SBATCH --time=04:00:00                 # Maximum job run time (HH:MM:SS)
+#SBATCH --nodes=1                       # Request 1 node
+#SBATCH --ntasks-per-node=1             # 1 task per node
+#SBATCH --cpus-per-task=8               # Request 8 CPU cores per task (for data loading)
+#SBATCH --mem=64G                       # Request 64GB of memory
+#SBATCH --gres=gpu:1                    # **Most critical: Request 1 GPU**
+#
+
 set -e
 
 # --- Configuration ---
