@@ -93,20 +93,26 @@ echo "===== LongRefiner HPC Setup ====="
 echo -n "Step 0: Setting up .env file... "
 if [ ! -f .env ]; then
     if [ ! -f .env.example ]; then
-        echo "ERROR: .env.example not found."
-        exit 1
+        echo "WARNING: .env.example not found. Creating empty .env file."
+        touch .env
+        echo "Created empty .env file."
+    else
+        cp .env.example .env
+        echo "Created .env from .env.example"
     fi
-    cp .env.example .env
-    echo "Created .env from .env.example"
 else
     echo "Found existing .env"
 fi
 
-# Load environment variables from .env
-set -a
-# Use . instead of source for sh compatibility
-. .env
-set +a
+# Load environment variables from .env (only if file exists and is readable)
+if [ -f .env ] && [ -r .env ]; then
+    set -a
+    # Use . instead of source for sh compatibility
+    . .env
+    set +a
+else
+    echo "WARNING: .env file not found or not readable. Continuing without loading environment variables."
+fi
 
 # 0.1. Update repository with git pull
 echo -n "Step 0.1: Updating repository... "
