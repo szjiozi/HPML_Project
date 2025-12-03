@@ -1,6 +1,14 @@
 #!/bin/bash
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 
+# --- Experiment settings ---
+MODEL_VARIANT="A"  # A: Full LoRA, B: LoRA+PTQ, C: QLoRA
+QUANTIZATION_STRATEGY="none"  # none, int8, int4, nf4
+
+# --- wandb settings ---
+WANDB_PROJECT="LongRefiner_Evaluation"
+WANDB_ENABLED="--wandb_enabled"  # Comment out to disable wandb
+
 # set datasets
 DATASET_NAME="nq"
 SPLIT="test"
@@ -43,4 +51,8 @@ python scripts/evaluation/run_eval.py \
     --generator_max_input_len 15000 \
     --max_tokens 512 \
     --test_sample_num 1000 \
-    --save_note "test_experiment"
+    --save_note "test_experiment" \
+    --model_variant ${MODEL_VARIANT} \
+    --quantization_strategy ${QUANTIZATION_STRATEGY} \
+    --wandb_project ${WANDB_PROJECT} \
+    ${WANDB_ENABLED}
