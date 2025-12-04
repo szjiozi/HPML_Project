@@ -3,9 +3,10 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 
 # --- experiment variant ---
 # Options:
-#   base  : original LongRefiner teacher (HF checkpoints, 3B)
-#   lora  : student LoRA models (step1/2/3_model on Qwen-0.5B)
-#   qlora : student QLoRA models (step1/2/3_model_qlora on Qwen-0.5B)
+#   base     : original LongRefiner teacher (HF checkpoints, 3B)
+#   lora     : student LoRA models (step1/2/3_model on Qwen-0.5B)
+#   qlora    : student QLoRA models (step1/2/3_model_qlora on Qwen-0.5B)
+#   lora_ptq : student LoRA models with post-training quantization
 EXPERIMENT_TYPE="base"
 
 # --- wandb settings ---
@@ -39,8 +40,14 @@ elif [ "${EXPERIMENT_TYPE}" = "qlora" ]; then
   QUERY_ANALYSIS_MODULE="model/step1_model_qlora"
   DOC_STRUCTURING_MODULE="model/step2_model_qlora"
   GLOBAL_SELECTION_MODULE="model/step3_model_qlora"
+elif [ "${EXPERIMENT_TYPE}" = "lora_ptq" ]; then
+  # Student: Qwen-0.5B + LoRA adapters with PTQ (int8/int4)
+  BASE_REFINER_MODEL_PATH="model/Qwen2.5-0.5B-Instruct"
+  QUERY_ANALYSIS_MODULE="model/step1_model_ptq"
+  DOC_STRUCTURING_MODULE="model/step2_model_ptq"
+  GLOBAL_SELECTION_MODULE="model/step3_model_ptq"
 else
-  echo "Unknown EXPERIMENT_TYPE: ${EXPERIMENT_TYPE}. Please use 'base', 'lora', or 'qlora'."
+  echo "Unknown EXPERIMENT_TYPE: ${EXPERIMENT_TYPE}. Please use 'base', 'lora', 'qlora', or 'lora_ptq'."
   exit 1
 fi
 SCORE_MODEL="bge-reranker-v2-m3"
@@ -73,5 +80,6 @@ python scripts/evaluation/run_eval.py \
     --max_tokens 512 \
     --test_sample_num 1000 \
     --save_note "${EXPERIMENT_TYPE}_experiment" \
+    --experiment_type ${EXPERIMENT_TYPE} \
     --wandb_project ${WANDB_PROJECT} \
     ${WANDB_ENABLED}

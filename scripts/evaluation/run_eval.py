@@ -3,6 +3,7 @@ import json
 import argparse
 import time
 from pathlib import Path
+from typing import Tuple
 
 import torch
 import wandb
@@ -11,6 +12,100 @@ from flashrag.config import Config
 from flashrag.evaluator import Evaluator
 from flashrag.utils import get_generator, get_dataset
 from flashrag.prompt import PromptTemplate
+
+
+# --- FLOPs Estimation Constants ---
+# Approximate parameter counts for different model sizes
+MODEL_PARAMS = {
+    "Qwen2.5-0.5B": 0.5e9,
+    "Qwen2.5-3B": 3.0e9,
+    "Llama-3.1-8B": 8.0e9,
+}
+
+
+def estimate_model_params(model_path: str) -> float:
+    """
+    Estimate model parameters based on model path.
+    Returns parameter count in billions.
+    """
+    model_path_lower = model_path.lower()
+
+    if "0.5b" in model_path_lower or "0_5b" in model_path_lower:
+        return 0.5e9
+    elif "3b" in model_path_lower:
+        return 3.0e9
+    elif "7b" in model_path_lower:
+        return 7.0e9
+    elif "8b" in model_path_lower:
+        return 8.0e9
+    elif "13b" in model_path_lower:
+        return 13.0e9
+    elif "70b" in model_path_lower:
+        return 70.0e9
+    else:
+        # Default fallback
+        return 3.0e9
+
+
+def estimate_flops_per_token(num_params: float) -> float:
+    """
+    Estimate FLOPs per token for inference.
+
+    For transformer inference, a common approximation is:
+    FLOPs ≈ 2 * num_parameters per token (forward pass only)
+
+    This is a simplified estimate; actual FLOPs depend on:
+    - Model architecture (attention heads, layers, hidden dim)
+    - Sequence length (attention is O(n^2))
+    - KV cache usage
+    """
+    return 2 * num_params
+
+
+def calculate_inference_flops(
+    refiner_model_path: str,
+    generator_model_path: str,
+    num_samples: int,
+    avg_input_tokens: int = 2048,
+    avg_output_tokens: int = 100,
+    avg_retrieval_docs: int = 10,
+) -> Tuple[float, float, float]:
+    """
+    Calculate estimated FLOPs for the entire inference pipeline.
+
+    Returns:
+        Tuple of (refiner_gflops_per_query, generator_gflops_per_query, total_gflops_per_query)
+    """
+    # Estimate parameters for each model
+    refiner_params = estimate_model_params(refiner_model_path)
+    generator_params = estimate_model_params(generator_model_path)
+
+    # Refiner processes multiple modules:
+    # 1. Query Analysis: processes query (~50 tokens)
+    # 2. Doc Structuring: processes each doc (~500 tokens per doc)
+    # 3. Global Selection: processes structured output (~1000 tokens)
+    query_tokens = 50
+    doc_tokens_per_doc = 500
+    selection_tokens = 1000
+
+    refiner_total_tokens = (
+        query_tokens  # Query analysis
+        + (doc_tokens_per_doc * avg_retrieval_docs)  # Doc structuring
+        + selection_tokens  # Global selection
+    )
+
+    # FLOPs calculation
+    refiner_flops = estimate_flops_per_token(refiner_params) * refiner_total_tokens
+    generator_flops = estimate_flops_per_token(generator_params) * (
+        avg_input_tokens + avg_output_tokens
+    )
+
+    # Convert to GFLOPs
+    refiner_gflops = refiner_flops / 1e9
+    generator_gflops = generator_flops / 1e9
+    total_gflops = refiner_gflops + generator_gflops
+
+    return refiner_gflops, generator_gflops, total_gflops
 
 
 def parse_args():
@@ -115,6 +210,14 @@ def parse_args():
         "--save_note", type=str, default="", help="Note to save with results"
     )
 
+    # --- Experiment tracking arguments ---
+    parser.add_argument(
+        "--experiment_type",
+        type=str,
+        default="base",
+        choices=["base", "lora", "qlora", "lora_ptq"],
+        help="Experiment type: base (teacher 3B), lora (student LoRA), qlora (student QLoRA), lora_ptq (LoRA + PTQ)",
+    )
     parser.add_argument(
         "--wandb_project",
         type=str,
@@ -129,6 +232,25 @@ def parse_args():
         type=str,
         default=None,
         help="Path to the model checkpoint for measuring model size",
+    )
+    # --- FLOPs estimation parameters ---
+    parser.add_argument(
+        "--avg_input_tokens",
+        type=int,
+        default=2048,
+        help="Average input tokens for FLOPs estimation",
+    )
+    parser.add_argument(
+        "--avg_output_tokens",
+        type=int,
+        default=100,
+        help="Average output tokens for FLOPs estimation",
+    )
+    parser.add_argument(
+        "--avg_retrieval_docs",
+        type=int,
+        default=10,
+        help="Average number of retrieval documents per query",
     )
     return parser.parse_args()
 
@@ -183,13 +305,14 @@ def run(args):
         wandb.init(
             project=args.wandb_project,
             job_type="evaluation",
-            name=f"evaluation_{args.dataset_name}",
+            name=f"{args.experiment_type}_{args.dataset_name}",
             mode=wandb_mode,
         )
 
         # Log experiment configuration
         wandb_config = {
             # Experiment settings
+            "experiment_type": args.experiment_type,
             "dataset_name": args.dataset_name,
             "split": args.split,
             "test_sample_num": args.test_sample_num,
@@ -205,6 +328,10 @@ def run(args):
             "generator_max_input_len": args.generator_max_input_len,
             "gpu_memory_utilization": args.gpu_memory_utilization,
             "framework": args.framework,
+            # FLOPs estimation params
+            "avg_input_tokens": args.avg_input_tokens,
+            "avg_output_tokens": args.avg_output_tokens,
+            "avg_retrieval_docs": args.avg_retrieval_docs,
         }
         wandb.config.update(wandb_config)
 
@@ -317,6 +444,19 @@ def run(args):
     # Model size
     model_size_gb = get_model_size_gb(args.model_checkpoint_path)
 
+    # --- Calculate FLOPs ---
+    refiner_gflops, generator_gflops, total_gflops = calculate_inference_flops(
+        refiner_model_path=args.base_refiner_model_path,
+        generator_model_path=args.generator_model_path,
+        num_samples=num_samples,
+        avg_input_tokens=args.avg_input_tokens,
+        avg_output_tokens=args.avg_output_tokens,
+        avg_retrieval_docs=args.avg_retrieval_docs,
+    )
+    print(f"Estimated FLOPs per query: {total_gflops:.2f} GFLOPs")
+    print(f"  - Refiner: {refiner_gflops:.2f} GFLOPs")
+    print(f"  - Generator: {generator_gflops:.2f} GFLOPs")
+
     # --- Log to wandb ---
     if args.wandb_enabled:
         # System metrics
@@ -330,6 +470,10 @@ def run(args):
             "system/generator_latency_ms_per_sample": generator_latency_ms,
             "system/model_init_time_sec": init_time,
             "system/num_samples": num_samples,
+            # FLOPs metrics
+            "system/refiner_gflops_per_query": refiner_gflops,
+            "system/generator_gflops_per_query": generator_gflops,
+            "system/total_gflops_per_query": total_gflops,
         }
 
         if model_size_gb > 0:
@@ -359,9 +503,13 @@ def run(args):
                 "inference/peak_vram_gb": peak_vram_gb,
                 "inference/avg_latency_ms_per_sample": avg_latency_ms,
                 "inference/total_time_sec": total_inference_time,
+                "inference/total_gflops_per_query": total_gflops,
+                "inference/refiner_gflops_per_query": refiner_gflops,
+                "inference/generator_gflops_per_query": generator_gflops,
                 # Task metrics summary
                 **{k.replace("task/", "final/"): v for k, v in task_metrics.items()},
                 # Experiment info
+                "experiment_type": args.experiment_type,
                 "dataset_name": args.dataset_name,
                 "num_samples": num_samples,
             }
@@ -372,15 +520,18 @@ def run(args):
 
         # Save results as artifact
         result_artifact = wandb.Artifact(
-            name=f"eval_result_{args.dataset_name}",
+            name=f"eval_result_{args.experiment_type}_{args.dataset_name}",
             type="evaluation_result",
             metadata={
+                "experiment_type": args.experiment_type,
                 "dataset_name": args.dataset_name,
             },
         )
 
         # Save detailed results to file
-        result_file = os.path.join(args.save_dir, f"eval_result_{args.dataset_name}.json")
+        result_file = os.path.join(
+            args.save_dir, f"eval_result_{args.experiment_type}_{args.dataset_name}.json"
+        )
         os.makedirs(args.save_dir, exist_ok=True)
         with open(result_file, "w", encoding="utf-8") as f:
             json.dump(
@@ -394,6 +545,9 @@ def run(args):
                         "avg_latency_ms_per_sample": avg_latency_ms,
                         "total_inference_time_sec": total_inference_time,
                         "model_size_gb": model_size_gb,
+                        "total_gflops_per_query": total_gflops,
+                        "refiner_gflops_per_query": refiner_gflops,
+                        "generator_gflops_per_query": generator_gflops,
                     },
                 },
                 f,
@@ -412,12 +566,16 @@ def run(args):
     print("\n" + "=" * 50)
     print("EVALUATION SUMMARY")
     print("=" * 50)
+    print(f"Experiment Type: {args.experiment_type}")
     print(f"Dataset: {args.dataset_name}")
     print(f"Samples: {num_samples}")
     print("-" * 50)
     print("System Metrics:")
     print(f"  Peak VRAM: {peak_vram_gb:.2f} GB")
     print(f"  Avg Latency: {avg_latency_ms:.2f} ms/sample")
+    print(f"  FLOPs per Query: {total_gflops:.2f} GFLOPs")
+    print(f"    - Refiner: {refiner_gflops:.2f} GFLOPs")
+    print(f"    - Generator: {generator_gflops:.2f} GFLOPs")
     if model_size_gb > 0:
         print(f"  Model Size: {model_size_gb:.2f} GB")
     print("-" * 50)
