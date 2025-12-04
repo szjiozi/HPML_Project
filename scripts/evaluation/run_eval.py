@@ -218,11 +218,152 @@ Response: """
     return prompt
 
 
+def format_prompt_optimized(question: str, documents: List, dataset_name: str = "hotpotqa") -> str:
+    """
+    Use Llama-3 standard Chat Template format for prompts.
+    
+    Args:
+        question: The question to answer
+        documents: List of documents (str or dict)
+        dataset_name: Dataset name (for potential future customization)
+        
+    Returns:
+        str: Formatted prompt with ChatML structure
+    """
+    # --- 1. Build document context ---
+    context_str = ""
+    if isinstance(documents, list):
+        formatted_docs = []
+        for i, doc in enumerate(documents):
+            content = doc if isinstance(doc, str) else doc.get('content', doc.get('text', str(doc)))
+            formatted_docs.append(f"Document [{i+1}]: {content}")
+        context_str = "\n\n".join(formatted_docs)
+    else:
+        context_str = str(documents)
+
+    # --- 2. Define System Prompt (Core Rules) ---
+    system_instruction = (
+        "You are a precise answering assistant. Your task is to answer the user's question "
+        "based ONLY on the provided documents.\n\n"
+        "CRITICAL INSTRUCTIONS:\n"
+        "1. Be extremely concise. Answers should be specific entities (names, dates, places).\n"
+        "2. Do NOT provide explanations, notes, or extra context (e.g., avoid '(Note:...)').\n"
+        "3. If the answer is not in the documents, state exactly 'no_answer'.\n"
+        "4. You MUST end your response with the exact phrase: 'So the final answer is: [Answer]'"
+    )
+
+    # --- 3. Define User Prompt (Data Core) ---
+    user_input = (
+        f"Context Documents:\n{context_str}\n\n"
+        f"Question: {question}"
+    )
+
+    # --- 4. Manual ChatML Construction (Fallback) ---
+    # Note: This hardcodes Llama-3 special tokens
+    prompt = (
+        "<|begin_of_text|>"
+        "<|start_header_id|>system<|end_header_id|>\n\n"
+        f"{system_instruction}<|eot_id|>"
+        "<|start_header_id|>user<|end_header_id|>\n\n"
+        f"{user_input}<|eot_id|>"
+        "<|start_header_id|>assistant<|end_header_id|>\n\n"
+    )
+    
+    return prompt
+
+
 def extract_answer(response: str) -> str:
     """Extract the final answer from the response."""
     if "So the final answer is:" in response:
         return response.split("So the final answer is:")[-1].strip()
     return response.strip()
+
+
+def extract_answer_robust(response: str) -> str:
+    """
+    Robust answer extraction with cascading strategies for Llama-3 verbose outputs.
+    
+    Args:
+        response (str): Raw model output text
+        
+    Returns:
+        str: Extracted concise answer
+    """
+    if not response:
+        return ""
+        
+    # --- Stage 0: Preprocessing & Noise Removal ---
+    # Remove (Note:...) or [Note:...] annotations common in Llama-3
+    clean_text = re.sub(r'[\(\[]Note:.*?[\)\]]', '', response, flags=re.IGNORECASE | re.DOTALL)
+    
+    # Remove "However, " transitional words at the start
+    clean_text = re.sub(r'^However,?\s*', '', clean_text.strip(), flags=re.IGNORECASE)
+    
+    clean_text = clean_text.strip()
+    
+    # --- Stage 1: Explicit Format Markers (Golden Path) ---
+    markers = [
+        "So the final answer is:",
+        "The final answer is:",
+        "Final answer:",
+        "Therefore, the answer is:",
+        "The answer is:",
+    ]
+    
+    for marker in markers:
+        pattern = re.escape(marker)
+        match = re.search(pattern, clean_text, re.IGNORECASE)
+        if match:
+            candidate = clean_text[match.end():].strip()
+            
+            # Remove trailing punctuation
+            if candidate and candidate[-1] in string.punctuation:
+                candidate = candidate.rstrip(string.punctuation)
+            
+            if candidate:
+                return candidate
+
+    # --- Stage 2: Refusal Detection ---
+    refusal_patterns = [
+        "not mentioned in the provided documents",
+        "no information provided",
+        "cannot answer",
+        "context does not contain",
+        "not found in the documents",
+        "information is missing"
+    ]
+    for pattern in refusal_patterns:
+        if pattern.lower() in clean_text.lower():
+            if len(clean_text) < 150:
+                return "no_answer"
+
+    # --- Stage 3: Heuristic Fallback ---
+    # Strategy A: Short text - likely the answer itself
+    if len(clean_text) < 50:
+        return clean_text.rstrip(string.punctuation)
+
+    # Strategy B: Extract first sentence
+    sentences = re.split(r'(?<=[.!?])\s+', clean_text)
+    if sentences:
+        first_sentence = sentences[0].strip()
+        if len(first_sentence) < 100:
+            # Remove common leading phrases
+            first_sentence = re.sub(
+                r'^(The answer is|The capital is|It is)\s+', 
+                '', 
+                first_sentence, 
+                flags=re.IGNORECASE
+            )
+            return first_sentence.rstrip(string.punctuation)
+
+    # Strategy C: Extract last sentence (for CoT reasoning)
+    if len(sentences) > 1:
+        last_sentence = sentences[-1].strip()
+        if len(last_sentence) < 100:
+            return last_sentence.rstrip(string.punctuation)
+
+    # --- Stage 4: Forced Truncation (Fail-safe) ---
+    return clean_text[:50].strip()
 
 
 # =============================================================================
@@ -527,15 +668,21 @@ def run(args):
         tensor_parallel_size=args.tensor_parallel_size,
         trust_remote_code=True,
     )
+    # Llama-3 special token IDs for proper stopping
+    stop_token_ids = [128001, 128009]  # <|end_of_text|>, <|eot_id|>
+    
     sampling_params = SamplingParams(
-        max_tokens=args.max_tokens,
-        temperature=0.0,  # Greedy decoding for evaluation
+        max_tokens=1024,  # Increased to prevent truncation
+        temperature=0.0,  # Greedy decoding for evaluation reproducibility
+        repetition_penalty=1.1,  # Prevent infinite loops
+        stop_token_ids=stop_token_ids,  # Ensure proper stopping
+        skip_special_tokens=True,  # Clean output
     )
     
     # --- Format prompts ---
-    print("Formatting prompts...")
+    print("Formatting prompts with optimized ChatML template...")
     prompts = [
-        format_prompt(q, docs, args.dataset_name)
+        format_prompt_optimized(q, docs, args.dataset_name)
         for q, docs in zip(questions, refined_results)
     ]
     
@@ -546,8 +693,8 @@ def run(args):
     generator_time = time.time() - generator_start_time
     print(f"Generator completed in {generator_time:.2f} seconds")
     
-    # Extract predictions
-    predictions = [extract_answer(output.outputs[0].text) for output in outputs]
+    # Extract predictions (using robust extraction)
+    predictions = [extract_answer_robust(output.outputs[0].text) for output in outputs]
     
     # --- Compute metrics ---
     print("Computing metrics...")
