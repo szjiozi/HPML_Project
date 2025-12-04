@@ -218,17 +218,19 @@ Response: """
     return prompt
 
 
-def format_prompt_optimized(question: str, documents: List, dataset_name: str = "hotpotqa") -> str:
+def format_prompt_optimized(question: str, documents: List, dataset_name: str = "hotpotqa", tokenizer=None) -> str:
     """
-    Use Llama-3 standard Chat Template format for prompts.
+    Use tokenizer's apply_chat_template for proper formatting.
+    Inspired by longrefiner/prompt_template.py
     
     Args:
         question: The question to answer
         documents: List of documents (str or dict)
         dataset_name: Dataset name (for potential future customization)
+        tokenizer: Optional tokenizer for apply_chat_template
         
     Returns:
-        str: Formatted prompt with ChatML structure
+        str: Formatted prompt with proper chat template
     """
     # --- 1. Build document context ---
     context_str = ""
@@ -258,17 +260,26 @@ def format_prompt_optimized(question: str, documents: List, dataset_name: str = 
         f"Question: {question}"
     )
 
-    # --- 4. Manual ChatML Construction (Fallback) ---
-    # Note: This hardcodes Llama-3 special tokens
-    prompt = (
-        "<|begin_of_text|>"
-        "<|start_header_id|>system<|end_header_id|>\n\n"
-        f"{system_instruction}<|eot_id|>"
-        "<|start_header_id|>user<|end_header_id|>\n\n"
-        f"{user_input}<|eot_id|>"
-        "<|start_header_id|>assistant<|end_header_id|>\n\n"
-    )
+    # --- 4. Build messages list ---
+    messages = [
+        {"role": "system", "content": system_instruction},
+        {"role": "user", "content": user_input}
+    ]
     
+    # --- 5. Apply chat template (if tokenizer available) ---
+    if tokenizer is not None:
+        try:
+            prompt = tokenizer.apply_chat_template(
+                messages, 
+                tokenize=False, 
+                add_generation_prompt=True
+            )
+            return prompt
+        except Exception as e:
+            print(f"Warning: apply_chat_template failed: {e}. Falling back to simple format.")
+    
+    # --- 6. Fallback: simple format (like original format_prompt) ---
+    prompt = f"{system_instruction}\n\n{user_input}\n\nResponse: "
     return prompt
 
 
@@ -668,6 +679,16 @@ def run(args):
         tensor_parallel_size=args.tensor_parallel_size,
         trust_remote_code=True,
     )
+    
+    # Get tokenizer for proper chat template formatting
+    try:
+        from transformers import AutoTokenizer
+        generator_tokenizer = AutoTokenizer.from_pretrained(args.generator_model_path, trust_remote_code=True)
+        print(f"✓ Loaded tokenizer for chat template formatting")
+    except Exception as e:
+        print(f"⚠️  Could not load tokenizer: {e}")
+        generator_tokenizer = None
+    
     # Llama-3 special token IDs for proper stopping
     stop_token_ids = [128001, 128009]  # <|end_of_text|>, <|eot_id|>
     
@@ -680,11 +701,19 @@ def run(args):
     )
     
     # --- Format prompts ---
-    print("Formatting prompts with optimized ChatML template...")
-    prompts = [
-        format_prompt_optimized(q, docs, args.dataset_name)
-        for q, docs in zip(questions, refined_results)
-    ]
+    # Use optimized prompt with tokenizer if available
+    if generator_tokenizer is not None:
+        print("Formatting prompts with optimized template (using tokenizer.apply_chat_template)...")
+        prompts = [
+            format_prompt_optimized(q, docs, args.dataset_name, tokenizer=generator_tokenizer)
+            for q, docs in zip(questions, refined_results)
+        ]
+    else:
+        print("Formatting prompts with original template...")
+        prompts = [
+            format_prompt(q, docs, args.dataset_name)
+            for q, docs in zip(questions, refined_results)
+        ]
     
     # --- Generate answers ---
     print("Starting answer generation...")
