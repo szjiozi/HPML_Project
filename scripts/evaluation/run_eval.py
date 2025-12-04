@@ -2,6 +2,9 @@ import os
 import json
 import argparse
 import time
+import tempfile
+import atexit
+import yaml
 from pathlib import Path
 from typing import Tuple
 
@@ -12,6 +15,43 @@ from flashrag.config import Config
 from flashrag.evaluator import Evaluator
 from flashrag.utils import get_generator, get_dataset
 from flashrag.prompt import PromptTemplate
+
+# --- Temporary Config File Management ---
+_temp_config_files = []
+
+
+def _cleanup_temp_configs():
+    """Clean up temporary config files on exit."""
+    for filepath in _temp_config_files:
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        except Exception:
+            pass
+
+
+atexit.register(_cleanup_temp_configs)
+
+
+def create_flashrag_config(config_dict: dict) -> Config:
+    """
+    Create a FlashRAG Config object from a dictionary.
+
+    FlashRAG's Config class expects a YAML file path, so we create
+    a temporary file with the configuration. The file is kept until
+    program exit to ensure all FlashRAG components can access it.
+    """
+    fd, temp_config_path = tempfile.mkstemp(suffix=".yaml", prefix="flashrag_config_")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            yaml.dump(config_dict, f, default_flow_style=False)
+    except Exception:
+        os.close(fd)
+        raise
+
+    _temp_config_files.append(temp_config_path)
+    return Config(temp_config_path)
+
 
 
 # --- FLOPs Estimation Constants ---
@@ -358,7 +398,7 @@ def run(args):
     print("Initializing components...")
     init_start_time = time.time()
 
-    config = Config(config_dict)
+    config = create_flashrag_config(config_dict)
     generator = get_generator(config)
     refiner = LongRefiner(
         base_model_path=args.base_refiner_model_path,
