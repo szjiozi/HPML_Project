@@ -19,3 +19,6 @@ ENV/
 
 .history/
 model/*
+
+data_and_model.zip
+eval_data/
