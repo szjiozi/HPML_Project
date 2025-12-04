@@ -4,6 +4,7 @@ Uses vLLM for generation and simple metrics calculation
 """
 import os
 import re
+import gc
 import json
 import string
 import argparse
@@ -228,6 +229,68 @@ def extract_answer(response: str) -> str:
 # Data Loading
 # =============================================================================
 
+def load_ground_truth_from_hf(dataset_name: str, split: str) -> Dict[str, List[str]]:
+    """
+    Load ground truth answers from HuggingFace datasets.
+    
+    Returns:
+        Dictionary mapping question -> list of acceptable answers
+    """
+    print(f"Loading ground truth from HuggingFace: {dataset_name} ({split})...")
+    
+    question_to_answers = {}
+    
+    try:
+        if dataset_name.lower() == "hotpotqa":
+            # HotpotQA dataset
+            dataset = load_dataset("hotpot_qa", "fullwiki", split=split, trust_remote_code=True)
+            for item in dataset:
+                q = item["question"]
+                ans = item["answer"]
+                question_to_answers[q] = [ans] if isinstance(ans, str) else ans
+                
+        elif dataset_name.lower() == "nq":
+            # Natural Questions
+            dataset = load_dataset("google-research-datasets/natural_questions", split=split)
+            for item in dataset:
+                q = item["question"]["text"]
+                # NQ has short_answers and long_answers
+                answers = []
+                for ann in item["annotations"]:
+                    for sa in ann["short_answers"]:
+                        if sa["start_token"] != -1:
+                            answers.append(sa["text"])
+                if answers:
+                    question_to_answers[q] = answers
+                    
+        elif dataset_name.lower() == "triviaqa":
+            # TriviaQA
+            dataset = load_dataset("trivia_qa", "rc", split=split)
+            for item in dataset:
+                q = item["question"]
+                ans = item["answer"]["value"]
+                aliases = item["answer"].get("aliases", [])
+                question_to_answers[q] = [ans] + aliases
+                
+        elif dataset_name.lower() == "squad":
+            # SQuAD
+            dataset = load_dataset("squad", split=split)
+            for item in dataset:
+                q = item["question"]
+                answers = item["answers"]["text"]
+                question_to_answers[q] = answers
+                
+        else:
+            print(f"Warning: Unknown dataset {dataset_name}, ground truth not loaded from HF")
+            
+    except Exception as e:
+        print(f"Warning: Could not load ground truth from HuggingFace: {e}")
+        print("Will try to find answers in retrieval result file...")
+    
+    print(f"Loaded {len(question_to_answers)} ground truth answers from HuggingFace")
+    return question_to_answers
+
+
 def load_eval_data(
     dataset_name: str,
     split: str,
@@ -246,13 +309,8 @@ def load_eval_data(
     with open(retrieval_result_path, "r", encoding="utf-8") as f:
         retrieval_result = json.load(f)
     
-    # Try to load from HuggingFace datasets
-    dataset_mapping = {
-        "nq": "google-research-datasets/natural_questions",
-        "hotpotqa": "hotpot_qa",
-        "triviaqa": "trivia_qa",
-        "squad": "squad",
-    }
+    # Load ground truth from HuggingFace
+    hf_ground_truth = load_ground_truth_from_hf(dataset_name, split)
     
     questions = []
     ground_truths = []
@@ -260,29 +318,41 @@ def load_eval_data(
     
     # Check if retrieval_result is already in the expected format
     if isinstance(retrieval_result, dict):
-        # Format: {question: [docs]} or {question: {"docs": [...], "answer": ...}}
-        for question, value in list(retrieval_result.items())[:test_sample_num]:
+        # Format: {question: [docs]}
+        for question, docs in list(retrieval_result.items())[:test_sample_num]:
             questions.append(question)
-            
-            if isinstance(value, dict):
-                docs = value.get("docs", value.get("retrieval_result", []))
-                answer = value.get("answer", value.get("golden_answers", ["unknown"]))
-            else:
-                docs = value
-                answer = ["unknown"]
-            
             retrieval_docs.append(docs)
-            ground_truths.append(answer if isinstance(answer, list) else [answer])
+            
+            # Try to get ground truth from HuggingFace first
+            if question in hf_ground_truth:
+                ground_truths.append(hf_ground_truth[question])
+            elif isinstance(docs, dict):
+                # Maybe docs contains answer
+                answer = docs.get("answer", docs.get("golden_answers", ["unknown"]))
+                ground_truths.append(answer if isinstance(answer, list) else [answer])
+            else:
+                ground_truths.append(["unknown"])
     
     elif isinstance(retrieval_result, list):
         # Format: [{"question": ..., "docs": ..., "answer": ...}, ...]
         for item in retrieval_result[:test_sample_num]:
-            questions.append(item.get("question", ""))
+            question = item.get("question", "")
+            questions.append(question)
             retrieval_docs.append(item.get("docs", item.get("retrieval_result", [])))
-            answer = item.get("answer", item.get("golden_answers", ["unknown"]))
-            ground_truths.append(answer if isinstance(answer, list) else [answer])
+            
+            # Try to get ground truth from HuggingFace first
+            if question in hf_ground_truth:
+                ground_truths.append(hf_ground_truth[question])
+            else:
+                answer = item.get("answer", item.get("golden_answers", ["unknown"]))
+                ground_truths.append(answer if isinstance(answer, list) else [answer])
     
+    # Count how many have valid ground truth
+    valid_gt_count = sum(1 for gt in ground_truths if gt != ["unknown"])
     print(f"Loaded {len(questions)} samples from {retrieval_result_path}")
+    print(f"  - {valid_gt_count} samples have valid ground truth answers")
+    print(f"  - {len(questions) - valid_gt_count} samples have unknown ground truth")
+    
     return questions, ground_truths, retrieval_docs
 
 
@@ -367,7 +437,7 @@ def run(args):
         score_model_path=args.score_model_path,
         max_model_len=25000,
     )
-    
+
     init_time = time.time() - init_start_time
     print(f"Component initialization completed in {init_time:.2f} seconds")
     
@@ -508,6 +578,14 @@ def run(args):
         }, f, indent=2, ensure_ascii=False)
     print(f"Results saved to {result_file}")
     
+    # --- Cleanup generator to avoid Bus error ---
+    print("Cleaning up resources...")
+    del generator
+    del outputs
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    
     # --- Print summary ---
     print("\n" + "=" * 60)
     print("EVALUATION SUMMARY")
@@ -533,4 +611,10 @@ def run(args):
 
 if __name__ == "__main__":
     args = parse_args()
-    run(args)
+    try:
+        run(args)
+    finally:
+        # Ensure proper cleanup
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()

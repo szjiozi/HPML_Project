@@ -17,7 +17,7 @@ WANDB_ENABLED="--wandb_enabled"  # Comment out to disable: WANDB_ENABLED=""
 
 # --- Dataset settings ---
 DATASET_NAME="hotpotqa"
-SPLIT="test"
+SPLIT="validation"  # Use validation split (test split has no public answers)
 TEST_SAMPLE_NUM=1000
 
 # --- Retrieval results (must contain questions, docs, and answers) ---
