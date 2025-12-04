@@ -88,7 +88,7 @@ main_execution() {
     echo "Step 5: Running the quick start script with 'uv run'..."
     echo "-------------------------------------------"
     # 'uv run' automatically uses the project's .venv, no 'source' activation is needed.
-    uv run python scripts/quick_start.py
+    EXPERIMENT_TYPE="base" bash scripts/evaluation/run_eval.sh
     echo "-------------------------------------------"
     echo "Script finished successfully."
 

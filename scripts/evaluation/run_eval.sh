@@ -60,7 +60,7 @@ SAVE_DIR="results/"
 RETRIEVAL_RESULT="eval_data/hotpotqa_eval_1k_retrieval_result.json"
 
 # run script
-python scripts/evaluation/run_eval.py \
+uv runpython scripts/evaluation/run_eval.py \
     --dataset_name ${DATASET_NAME} \
     --split ${SPLIT} \
     --generator_model ${GENERATOR_MODEL} \
