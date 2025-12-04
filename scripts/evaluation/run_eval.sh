@@ -9,7 +9,7 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 #   lora     : student LoRA models (Qwen-0.5B)
 #   qlora    : student QLoRA models (Qwen-0.5B)
 #   lora_ptq : student LoRA + PTQ models
-EXPERIMENT_TYPE="base"
+EXPERIMENT_TYPE="${EXPERIMENT_TYPE:-base}"
 
 # --- wandb settings ---
 WANDB_PROJECT="LongRefiner_Evaluation"
