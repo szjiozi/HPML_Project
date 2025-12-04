@@ -2,8 +2,6 @@ import os
 import json
 import argparse
 import time
-import tempfile
-import yaml
 from pathlib import Path
 from typing import Tuple
 
@@ -298,30 +296,6 @@ def get_model_size_gb(checkpoint_path: str) -> float:
     return total_size / (1024**3)  # Convert to GB
 
 
-def create_flashrag_config(config_dict: dict) -> Config:
-    """
-    Create a FlashRAG Config object from a dictionary.
-    
-    FlashRAG's Config class expects a YAML file path, so we create
-    a temporary file with the configuration.
-    """
-    # Create a temporary YAML config file
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".yaml", delete=False, encoding="utf-8"
-    ) as f:
-        yaml.dump(config_dict, f, default_flow_style=False)
-        temp_config_path = f.name
-    
-    try:
-        config = Config(temp_config_path)
-    finally:
-        # Clean up the temporary file
-        if os.path.exists(temp_config_path):
-            os.remove(temp_config_path)
-    
-    return config
-
-
 def run(args):
     """Run evaluation pipeline"""
 
@@ -384,7 +358,7 @@ def run(args):
     print("Initializing components...")
     init_start_time = time.time()
 
-    config = create_flashrag_config(config_dict)
+    config = Config(config_dict)
     generator = get_generator(config)
     refiner = LongRefiner(
         base_model_path=args.base_refiner_model_path,
