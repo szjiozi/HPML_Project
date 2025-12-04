@@ -243,22 +243,14 @@ def format_prompt_optimized(question: str, documents: List, dataset_name: str = 
     else:
         context_str = str(documents)
 
-    # --- 2. Define System Prompt (Core Rules) ---
+    # Copy from longrefiner/prompt_template.py
     system_instruction = (
-        "You are a precise answering assistant. Your task is to answer the user's question "
-        "based ONLY on the provided documents.\n\n"
-        "CRITICAL INSTRUCTIONS:\n"
-        "1. Be extremely concise. Answers should be specific entities (names, dates, places).\n"
-        "2. Do NOT provide explanations, notes, or extra context (e.g., avoid '(Note:...)').\n"
-        "3. If the answer is not in the documents, state exactly 'no_answer'.\n"
-        "4. You MUST end your response with the exact phrase: 'So the final answer is: [Answer]'"
+        "Answer the question based on the given document."
+        "Only give me the answer and do not output any other words."
+        f"\nThe following are given documents.\n\n{context_str}"
     )
-
-    # --- 3. Define User Prompt (Data Core) ---
-    user_input = (
-        f"Context Documents:\n{context_str}\n\n"
-        f"Question: {question}"
-    )
+    
+    user_input = f"Question: {question}"
 
     # --- 4. Build messages list ---
     messages = [
