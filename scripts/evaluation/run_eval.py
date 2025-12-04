@@ -305,12 +305,40 @@ def load_eval_data(
         ground_truths: List of ground truth answers
         retrieval_docs: List of retrieved documents for each question
     """
+    # Try to load ground truth from corresponding .jsonl file first (most reliable)
+    jsonl_path = retrieval_result_path.replace("_retrieval_result.json", ".jsonl")
+    local_ground_truth = {}
+    
+    if os.path.exists(jsonl_path):
+        print(f"Loading ground truth from local file: {jsonl_path}")
+        try:
+            with open(jsonl_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        item = json.loads(line)
+                        q = item.get("question", "")
+                        ans = item.get("golden_answers", item.get("answer", ["unknown"]))
+                        if isinstance(ans, str):
+                            local_ground_truth[q] = [ans]
+                        elif isinstance(ans, list):
+                            local_ground_truth[q] = ans
+                        else:
+                            local_ground_truth[q] = [str(ans)]
+            print(f"✓ Loaded {len(local_ground_truth)} ground truth answers from local file")
+        except Exception as e:
+            print(f"Warning: Failed to load local ground truth: {e}")
+    else:
+        print(f"Local ground truth file not found: {jsonl_path}")
+    
     # Load retrieval results
     with open(retrieval_result_path, "r", encoding="utf-8") as f:
         retrieval_result = json.load(f)
     
-    # Load ground truth from HuggingFace
-    hf_ground_truth = load_ground_truth_from_hf(dataset_name, split)
+    # Load ground truth from HuggingFace as fallback
+    hf_ground_truth = {}
+    if not local_ground_truth:
+        print("Attempting to load ground truth from HuggingFace as fallback...")
+        hf_ground_truth = load_ground_truth_from_hf(dataset_name, split)
     
     questions = []
     ground_truths = []
@@ -323,8 +351,10 @@ def load_eval_data(
             questions.append(question)
             retrieval_docs.append(docs)
             
-            # Try to get ground truth from HuggingFace first
-            if question in hf_ground_truth:
+            # Priority: local GT > HuggingFace GT > embedded in docs
+            if question in local_ground_truth:
+                ground_truths.append(local_ground_truth[question])
+            elif question in hf_ground_truth:
                 ground_truths.append(hf_ground_truth[question])
             elif isinstance(docs, dict):
                 # Maybe docs contains answer
@@ -340,8 +370,10 @@ def load_eval_data(
             questions.append(question)
             retrieval_docs.append(item.get("docs", item.get("retrieval_result", [])))
             
-            # Try to get ground truth from HuggingFace first
-            if question in hf_ground_truth:
+            # Priority: local GT > HuggingFace GT > embedded in item
+            if question in local_ground_truth:
+                ground_truths.append(local_ground_truth[question])
+            elif question in hf_ground_truth:
                 ground_truths.append(hf_ground_truth[question])
             else:
                 answer = item.get("answer", item.get("golden_answers", ["unknown"]))
@@ -349,9 +381,27 @@ def load_eval_data(
     
     # Count how many have valid ground truth
     valid_gt_count = sum(1 for gt in ground_truths if gt != ["unknown"])
-    print(f"Loaded {len(questions)} samples from {retrieval_result_path}")
-    print(f"  - {valid_gt_count} samples have valid ground truth answers")
-    print(f"  - {len(questions) - valid_gt_count} samples have unknown ground truth")
+    print(f"\n{'='*60}")
+    print("Data Loading Summary:")
+    print(f"{'='*60}")
+    print(f"Total samples loaded: {len(questions)}")
+    print(f"✓ Valid ground truth: {valid_gt_count} ({valid_gt_count/len(questions)*100:.1f}%)")
+    print(f"✗ Unknown ground truth: {len(questions) - valid_gt_count} ({(len(questions)-valid_gt_count)/len(questions)*100:.1f}%)")
+    
+    # Debug: Show first 3 examples
+    if len(questions) > 0:
+        print(f"\n{'='*60}")
+        print("Sample Ground Truth (first 3 examples):")
+        print(f"{'='*60}")
+        for i in range(min(3, len(questions))):
+            print(f"\n[{i+1}] Question: {questions[i][:80]}...")
+            print(f"    Ground Truth: {ground_truths[i]}")
+            print(f"    Source: {'Local' if questions[i] in local_ground_truth else 'HuggingFace' if questions[i] in hf_ground_truth else 'Unknown'}")
+        print(f"{'='*60}\n")
+    
+    if valid_gt_count == 0:
+        print("\n⚠️  WARNING: No valid ground truth found! Results will be meaningless.")
+        print("   Please check that the ground truth data is correctly formatted.\n")
     
     return questions, ground_truths, retrieval_docs
 
@@ -580,11 +630,17 @@ def run(args):
     
     # --- Cleanup generator to avoid Bus error ---
     print("Cleaning up resources...")
-    del generator
-    del outputs
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    try:
+        del generator
+        del outputs
+        del prompts
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        print("✓ Resources cleaned up successfully")
+    except Exception as e:
+        print(f"Warning: Cleanup error (non-critical): {e}")
     
     # --- Print summary ---
     print("\n" + "=" * 60)
@@ -610,11 +666,25 @@ def run(args):
 
 
 if __name__ == "__main__":
+    import sys
     args = parse_args()
+    exit_code = 0
     try:
         run(args)
+        print("\n✅ Evaluation completed successfully!")
+    except KeyboardInterrupt:
+        print("\n⚠️  Evaluation interrupted by user")
+        exit_code = 130
+    except Exception as e:
+        print(f"\n❌ Evaluation failed with error: {e}")
+        import traceback
+        traceback.print_exc()
+        exit_code = 1
     finally:
         # Ensure proper cleanup
+        print("Performing final cleanup...")
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        # Exit cleanly to avoid vLLM cleanup issues
+        sys.exit(exit_code)
