@@ -62,8 +62,8 @@ def parse_args():
     parser.add_argument("--gpu_id", type=str, default="0", help="GPU IDs to use")
     
     # Experiment tracking
-    parser.add_argument("--wandb_project", type=str, default="LongRefiner_Evaluation", help="(Ignored in FlashRAG) Wandb project")
-    parser.add_argument("--wandb_enabled", action="store_true", help="(Ignored in FlashRAG) Enable wandb")
+    parser.add_argument("--wandb_project", type=str, default="LongRefiner_Evaluation", help="Wandb project name")
+    parser.add_argument("--wandb_enabled", action="store_true", help="Enable wandb logging")
     parser.add_argument("--model_checkpoint_path", type=str, default=None, help="Path to model checkpoint for size calculation")
     
     # FLOPs estimation (for compatibility)

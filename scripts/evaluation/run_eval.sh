@@ -87,7 +87,9 @@ uv run python scripts/evaluation/run_eval_flashrag.py \
     --score_model_path "${SCORE_MODEL_PATH}" \
     --save_dir "${SAVE_DIR}" \
     --experiment_type "${EXPERIMENT_TYPE}" \
-    --save_note "${EXPERIMENT_TYPE}"
+    --save_note "${EXPERIMENT_TYPE}" \
+    --wandb_project "${WANDB_PROJECT}" \
+    ${WANDB_ENABLED}
 
 echo "=============================================="
 echo "Evaluation completed!"
