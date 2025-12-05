@@ -76,6 +76,12 @@ def parse_args():
         "--gpu_memory_utilization", type=float, default=0.85, help="GPU memory ratio"
     )
     parser.add_argument(
+        "--tensor_parallel_size",
+        type=int,
+        default=1,
+        help="Number of GPUs for tensor parallelism",
+    )
+    parser.add_argument(
         "--generator_max_input_len",
         type=int,
         default=15000,
@@ -129,6 +135,13 @@ def parse_args():
     )
     parser.add_argument(
         "--save_note", type=str, default="", help="Note to save with results"
+    )
+    parser.add_argument(
+        "--experiment_type",
+        type=str,
+        default="base",
+        choices=["base", "lora", "qlora", "lora_ptq"],
+        help="Experiment type",
     )
     parser.add_argument(
         "--gpu_id", type=str, default="0", help="GPU IDs to use"
@@ -217,7 +230,7 @@ def run(args):
         wandb.init(
             project=args.wandb_project,
             job_type="evaluation",
-            name=f"flashrag_{args.dataset_name}",
+            name=f"{args.experiment_type}_{args.dataset_name}_flashrag",
             mode=wandb_mode,
         )
         wandb.config.update(vars(args))
