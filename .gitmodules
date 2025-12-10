@@ -1,0 +1,3 @@
+[submodule "training_data_construction/LongRefiner"]
+	path = training_data_construction/LongRefiner
+	url = https://github.com/szjiozi/LongRefiner.git

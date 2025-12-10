@@ -24,3 +24,6 @@ data_and_model.zip
 eval_data/
 results/
 .DS_Store
+
+training_data_construction/FlashRAG/
+training_data_construction/LongRefiner/

@@ -1,5 +1,5 @@
 ### model
-model_name_or_path: model/qwen2.5-3B-Instruct
+model_name_or_path: /scratch/jc13140/hpml_project/data/Qwen/Qwen2.5-0.5B-Instruct
 
 ### method
 stage: sft
@@ -11,7 +11,7 @@ lora_alpha: 32
 flash_attn: fa2
 
 ### dataset
-dataset: step2_data # compress_task1_data_vp2
+dataset: step_2 # compress_task1_data_vp2
 template: qwen
 cutoff_len: 25000 
 max_samples: 10000000
@@ -20,9 +20,10 @@ preprocessing_num_workers: 16
 #resume_from_checkpoint: true 
 
 ### output
-output_dir: checkpoint/step2_model/
+output_dir: /scratch/jc13140/hpml_project/model/step2_model_redo/
 logging_steps: 10
-save_steps: 500
+# save_steps: 500
+save_strategy: "epoch"
 plot_loss: true
 overwrite_output_dir: true
 
@@ -41,3 +42,7 @@ val_size: 0.03
 per_device_eval_batch_size: 1
 eval_strategy: steps
 eval_steps: 500
+
+### log
+report_to: wandb
+run_name: step_2_lora_redo
