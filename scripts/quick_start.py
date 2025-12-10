@@ -10,16 +10,16 @@ import torch  # noqa: E402
 import wandb  # noqa: E402
 from longrefiner import LongRefiner  # noqa: E402
 
-# --- 1. 初始化 wandb (可選，如果環境變數未設置則使用 offline 模式) ---
+# --- 1. Initialize wandb (optional, use offline mode if env var not set) ---
 wandb_mode = "online" if os.getenv("WANDB_API_KEY") else "disabled"
 wandb.init(
     project="LongRefiner_QuickStart",
     job_type="inference",
     name="quick_start_demo",
-    mode=wandb_mode,  # 如果沒有 API key 則禁用
+    mode=wandb_mode,  # Disable if no API key
 )
 
-# --- 2. 定義配置 ---
+# --- 2. Define configuration ---
 query_analysis_module_lora_path = (
     "jinjiajie/Query-Analysis-Qwen2.5-3B-Instruct"
 )
@@ -35,7 +35,7 @@ score_model_path = "BAAI/bge-reranker-v2-m3"
 max_model_len = 25000
 budget = 2048
 
-# 記錄配置到 wandb
+# Log configuration to wandb
 config = {
     "base_model_path": base_model_path,
     "query_analysis_module_lora_path": query_analysis_module_lora_path,
@@ -51,7 +51,7 @@ config = {
 }
 wandb.config.update(config)
 
-# --- 3. 初始化模型 ---
+# --- 3. Initialize model ---
 print("Initializing LongRefiner...")
 init_start_time = time.time()
 
@@ -68,16 +68,16 @@ refiner = LongRefiner(
 init_time = time.time() - init_start_time
 print(f"Model initialization completed in {init_time:.2f} seconds")
 
-# 記錄初始化時間
+# Log initialization time
 wandb.log({"inference/model_init_time_sec": init_time})
 
-# --- 4. 載入樣本資料 ---
+# --- 4. Load sample data ---
 with open("assets/sample_data.json", "r") as f:
     data = json.load(f)
 question = list(data.keys())[0]
 document_list = list(data.values())[0][:5]
 
-# 記錄輸入統計
+# Log input statistics
 input_stats = {
     "input/num_documents": len(document_list),
     "input/question_length": len(question),
@@ -87,25 +87,25 @@ input_stats = {
 }
 wandb.log(input_stats)
 
-# --- 5. 處理文件並測量推理指標 ---
+# --- 5. Process documents and measure inference metrics ---
 print("Processing documents...")
 
-# 重置 VRAM 追蹤器
+# Reset VRAM tracker
 if torch.cuda.is_available():
     torch.cuda.reset_max_memory_allocated()
 
-# 測量推理時間
+# Measure inference time
 inference_start_time = time.time()
 refined_result = refiner.run(question, document_list, budget=budget)
 inference_time = time.time() - inference_start_time
 
-# 計算 VRAM 使用
+# Calculate VRAM usage
 if torch.cuda.is_available():
     peak_vram_gb = torch.cuda.max_memory_allocated() / (1024**3)
 else:
     peak_vram_gb = 0
 
-# --- 6. 記錄推理指標 ---
+# --- 6. Log inference metrics ---
 avg_time_per_doc = (
     inference_time / len(document_list) if document_list else 0
 )
@@ -115,7 +115,7 @@ output_stats = {
     "inference/peak_vram_gb": peak_vram_gb,
 }
 
-# 計算輸出統計
+# Calculate output statistics
 if isinstance(refined_result, list):
     total_output_length = sum(
         len(doc) for doc in refined_result if isinstance(doc, str)
@@ -130,7 +130,7 @@ if isinstance(refined_result, list):
         "output/avg_output_length": avg_output_length,
     })
 
-    # 計算壓縮比
+    # Calculate compression ratio
     total_input_length = input_stats["input/total_doc_length"]
     if total_input_length > 0:
         compression_ratio = (
@@ -141,7 +141,7 @@ if isinstance(refined_result, list):
 
 wandb.log(output_stats)
 
-# 記錄到 summary (最終指標)
+# Log to summary (final metrics)
 wandb.summary.update({
     "inference/total_time_sec": inference_time,
     "inference/peak_vram_gb": peak_vram_gb,
@@ -156,7 +156,7 @@ if isinstance(refined_result, list) and refined_result:
         ),
     })
 
-# --- 7. 輸出結果 ---
+# --- 7. Output results ---
 print("\n=== Inference Results ===")
 print(f"Total time: {inference_time:.2f} seconds")
 vram_msg = (
@@ -171,7 +171,7 @@ num_docs = (
 print(f"\nRefined result ({num_docs} documents):")
 print(refined_result)
 
-# 可選：將結果保存為 wandb artifact
+# Optional: Save results as wandb artifact
 if isinstance(refined_result, list) and refined_result:
     result_artifact = wandb.Artifact(
         name="quick_start_result",
@@ -179,7 +179,7 @@ if isinstance(refined_result, list) and refined_result:
         metadata=config,
     )
 
-    # 創建臨時文件保存結果
+    # Create temporary file to save results
     result_file = "quick_start_result.json"
     with open(result_file, "w", encoding="utf-8") as f:
         json.dump({
@@ -192,15 +192,15 @@ if isinstance(refined_result, list) and refined_result:
     result_artifact.add_file(result_file)
     wandb.log_artifact(result_artifact)
 
-    # 清理臨時文件
+    # Clean up temporary file
     if os.path.exists(result_file):
         os.remove(result_file)
 
-# 結束 wandb run
+# Finish wandb run
 wandb.finish()
 print("\n✅ Wandb logging completed!")
 
-# --- 8. 清理資源 ---
+# --- 8. Clean up resources ---
 print("Cleaning up resources...")
 try:
     refiner.shutdown()
