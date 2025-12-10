@@ -12,15 +12,22 @@ This repository investigates the impact of quantization strategies (LoRA, QLoRA)
 
 ## Table of Contents
 
-- [Project Description](#-project-description)
-- [Project Milestones](#-project-milestones)
-- [Repository Structure](#-repository-structure)
-- [Installation](#️-installation)
-- [Quick Start](#-quick-start)
-- [Training](#-training)
-- [Evaluation](#-evaluation)
-- [Results](#-results)
-- [References](#-references)
+- [Project Description](#project-description)
+  - [Overview](#overview)
+  - [Goal / Objective](#goal--objective)
+  - [Challenges](#challenges)
+  - [Approach / Techniques](#approach--techniques)
+  - [Implementation Details](#implementation-details)
+  - [Key Components](#key-components)
+- [Project Milestones](#project-milestones)
+- [Repository Structure](#repository-structure)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Training](#training)
+- [Evaluation](#evaluation)
+- [Results](#results)
+- [Conclusions](#conclusions)
+- [References](#references)
 
 ---
 
@@ -30,17 +37,49 @@ This repository investigates the impact of quantization strategies (LoRA, QLoRA)
 
 LongRefiner is an efficient plug-and-play refinement system for long-context RAG applications that achieves 10x compression while maintaining superior performance through hierarchical document refinement. This project extends LongRefiner by investigating **quantization-aware adaptation** to improve training efficiency and deployment cost.
 
-### Research Question
+### Goal / Objective
 
-**How do different quantization strategies affect the efficiency and performance of LLM fine-tuning in long-context RAG tasks?**
+This project aims to investigate how different quantization strategies affect the efficiency and performance of large language model (LLM) fine-tuning in long-context Retrieval-augmented Generation tasks. We focus on two key modules from LongRefiner (Jin et al., 2025)—**Dual-Level Query Analysis (DQA)** and **Adaptive Document Refinement (ADR)**—which are critical for long-context RAG.
 
-We compare three training paradigms on the LongRefiner architecture:
+Specifically, we compare two training paradigms:
 
-| Approach | Description | Training Precision | Quantization Stage |
-|----------|-------------|-------------------|-------------------|
-| **Full LoRA (Baseline)** | Standard LoRA fine-tuning | FP16 | None |
-| **LoRA + PTQ** | LoRA training + post-training quantization | FP16 → INT8/INT4 | After training |
-| **QLoRA** | Quantization-aware LoRA fine-tuning | 4-bit NF4 | During training |
+1. **Full LoRA (FP16)** — Standard fine-tuning with full-precision weights
+2. **QLoRA** — Quantization-aware fine-tuning using 4-bit NF4 quantization during training
+
+The goal is to determine whether quantization-aware fine-tuning can achieve better trade-offs between accuracy, training efficiency, and deployment cost.
+
+### Challenges
+
+1. **Balancing accuracy and efficiency**: Quantization reduces memory usage but introduces representational noise that may degrade DQA classification accuracy and ADR ranking stability.
+2. **Ensuring fair comparison**: Each approach must share identical data, LoRA configurations, and optimization schedules to isolate the effect of quantization strategy.
+
+### Approach / Techniques
+
+We fix the Hierarchical Document Structuring (HDS) component using the original 3B LongRefiner-LoRA model (full precision), and train lighter student models for DQA and ADR. The study compares two versions of student fine-tuning pipelines under identical settings.
+
+| Group | Training Mode | Quantization Stage | Backbone | Adapter Precision |
+|-------|---------------|-------------------|----------|-------------------|
+| **A. Full LoRA (Baseline)** | FP16 training | None | Qwen-0.5B | FP16 |
+| **B. QLoRA** | 4-bit NF4 training (quantization-aware) | During training | Qwen-0.5B | FP16 |
+
+### Implementation Details
+
+**Hardware:** NYU HPC Greene Cluster
+- GPU: NVIDIA A100 (40GB)
+- Partition: `c12m85-a100-1`
+
+**Frameworks:**
+- Training: [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) for LoRA/QLoRA fine-tuning
+- Inference: [vLLM](https://github.com/vllm-project/vllm) for efficient model serving
+- Evaluation: Custom evaluation pipeline (FlashRAG-compatible)
+
+**Dataset:** 
+- **HotpotQA** (Multi-hop question answering)
+  - Training: ~10,000 samples from FlashRAG's preprocessed HotpotQA dataset
+  - Evaluation: 1,000 samples from the validation split
+  - Retrieval: BM25 on Wikipedia corpus (wiki18_100w)
+
+**Note:** Due to time and resource constraints, we focused on HotpotQA as the primary evaluation dataset. The original proposal included additional datasets (NQ, TriviaQA, PopQA, 2WikiMultiHopQA, ASQA, ELI5), which remain as future work.
 
 ### Key Components
 
@@ -65,10 +104,10 @@ We train student models (Qwen-0.5B) using LoRA and QLoRA, comparing them against
 
 ### Stage 2 — Model Construction
 - [x] Set up teacher inference pipeline using LongRefiner-3B LoRA
-- [x] Build three student fine-tuning pipelines:
+- [x] Build two student fine-tuning pipelines:
   - [x] Full LoRA (FP16)
-  - [ ] LoRA + PTQ (FP16 → INT8/INT4)
   - [x] QLoRA (4-bit NF4)
+- [ ] LoRA + PTQ (FP16 → INT8/INT4) — Not completed due to time constraints
 
 ### Stage 3 — Training & Distillation
 - [x] Generate training data for 3 refinement steps using LongRefiner-3B LoRA
@@ -82,7 +121,7 @@ We train student models (Qwen-0.5B) using LoRA and QLoRA, comparing them against
 - [x] Collect task metrics (Exact Match, F1 score)
 
 ### Stage 5 — Demo Development
-- [ ] Build interactive RAG demo comparing the three models
+- [ ] Build interactive RAG demo comparing Base, LoRA, and QLoRA models
 - [ ] Display DQA decisions, ADR refinement, latency, VRAM usage
 - [ ] Prepare final report and presentation
 
@@ -315,12 +354,13 @@ llamafactory-cli train train_config_step2.yaml
 llamafactory-cli train train_config_step3.yaml
 ```
 
-Each training configuration supports three variants:
+Each training configuration supports two variants:
 - **Full LoRA**: Standard FP16 LoRA training
-- **LoRA + PTQ**: FP16 training → INT8/INT4 quantization
 - **QLoRA**: 4-bit NF4 quantization-aware training
 
 Training data is generated using the teacher model (LongRefiner-3B) on the HotpotQA dataset.
+
+**Note:** LoRA + PTQ (post-training quantization) was part of the original proposal but was not completed due to time and resource constraints.
 
 ---
 
@@ -400,7 +440,7 @@ This script attempts to use the FlashRAG framework but has compatibility issues:
 
 #### `compare_all_results.py`
 
-Compares performance across all three models:
+Compares performance across Base (teacher), LoRA, and QLoRA models:
 
 ```bash
 uv run python scripts/evaluation/compare_all_results.py
