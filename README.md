@@ -434,7 +434,7 @@ This script attempts to use the FlashRAG framework but has compatibility issues:
 - **Purpose**: Kept for reference and potential future fixes
 - **Issue**: `Config(config_dict=...)` API mismatch with FlashRAG 0.3.0
 
-**Note:** While our base model results are lower than the original paper (22.4% vs ~30% EM), the **relative comparison** between Base, LoRA, and QLoRA remains valid and informative for our quantization study.
+**Note:** While our base model results are lower than the original paper (22.4% vs 38% EM), the **relative comparison** between Base, LoRA, and QLoRA remains valid and informative for our quantization study.
 
 ### Analysis Scripts
 
