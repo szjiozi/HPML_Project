@@ -44,15 +44,16 @@ This project aims to investigate how different quantization strategies affect th
 Specifically, we compare three training paradigms:
 
 1. **Full Training (FP16)** - Standard fine-tuning
-2. **Full LoRA (FP16)** — Lora fine-tuning with full-precision weights
+2. **LoRA (FP16)** — Lora fine-tuning with full-precision weights
 3. **QLoRA** — Quantization-aware fine-tuning using 4-bit NF4 quantization during training
 
 The goal is to determine whether quantization-aware fine-tuning can achieve better trade-offs between accuracy, training efficiency, and deployment cost.
 
 ### Challenges
 
-1. **Balancing accuracy and efficiency**: Quantization reduces memory usage but introduces representational noise that may degrade DQA classification accuracy and ADR ranking stability.
+1. **Balancing accuracy and efficiency**: Quantization and PEFT training may reduce the memory usage, but we want to make sure this won't result in performance degration.
 2. **Ensuring fair comparison**: Each approach must share identical data, LoRA configurations, and optimization schedules to isolate the effect of quantization strategy.
+3. **Lack of publicly available training data**: LongRefiner does not release its training dataset, requiring us to reconstruct the full data generation pipeline. This involves reproducing the multi-stage refinement process and ensuring the generated data faithfully reflects the original methodology.
 
 ### Approach / Techniques
 
@@ -60,9 +61,9 @@ We train a lighter student models for each steps of the Long Refiner. The study 
 
 | Group | Training Mode | Quantization Stage | Backbone | Adapter Precision |
 |-------|---------------|-------------------|----------|-------------------|
-| **A. Full Finetuning (Baseline)** | FP16 training | None | Qwen-0.5B | FP16 |
-| **A. Full LoRA (Baseline)** | FP16 training | None | Qwen-0.5B | FP16 |
-| **B. QLoRA** | 4-bit NF4 training (quantization-aware) | During training | Qwen-0.5B | FP16 |
+| **A. Full Finetuning** | FP16 training | None | Qwen-0.5B | FP16 |
+| **B. LoRA** | FP16 training | None | Qwen-0.5B | FP16 |
+| **C. QLoRA** | 4-bit NF4 training (quantization-aware) | During training | Qwen-0.5B | FP16 |
 
 ### Implementation Details
 
@@ -88,10 +89,10 @@ We train a lighter student models for each steps of the Long Refiner. The study 
 LongRefiner consists of three modules that we fine-tune using different quantization strategies:
 
 1. **Dual-Level Query Analysis (DQA)** - Classifies queries as local or global
-2. **Hierarchical Document Structuring (HDS)** - Structures documents into XML format (fixed, using original 3B model)
+2. **Hierarchical Document Structuring (HDS)** - Structures documents into XML format
 3. **Adaptive Document Refinement (ADR)** - Selects relevant document sections
 
-We train student models (Qwen-0.5B) using LoRA and QLoRA, comparing them against the teacher model (Qwen-2.5-3B-instruct).
+We train student models (Qwen-2.5-0.5B-instruct) using LoRA and QLoRA, comparing them against the teacher model (Qwen-2.5-3B-instruct).
 
 ---
 
@@ -114,7 +115,7 @@ We train student models (Qwen-0.5B) using LoRA and QLoRA, comparing them against
 ### Stage 3 — Training & Distillation
 - [x] Generate training data for 3 refinement steps using LongRefiner-3B LoRA
 - [x] Train student models on Qwen-0.5B-Instruct
-- [x] Collect training-time metrics (VRAM, throughput, training time, FLOPs)
+- [x] Collect training-time metrics (VRAM, throughput...)
 
 ### Stage 4 — Evaluation & Analysis
 - [x] Reproduce QA results on HotpotQA (1000 samples)
@@ -131,7 +132,7 @@ We train student models (Qwen-0.5B) using LoRA and QLoRA, comparing them against
 
 ## Repository Structure
 
-```
+<!-- ```
 LongRefiner/
 ├── assets/                          # Sample data and figures
 │   ├── main_figure.jpg
@@ -173,9 +174,67 @@ LongRefiner/
 ├── pyproject.toml                   # Project dependencies (uv)
 ├── uv.lock                          # Dependency lock file
 └── README.md                        # This file
+``` -->
+
+```
+├── assets                                   # Sample data and figures
+│   ├── main_figure.jpg
+│   └── sample_data.json
+├── longrefiner                              # Core package for evaluation
+│   ├── __init__.py
+│   ├── prompt_template.py                   # Official prompt templates
+│   ├── refiner.py                           # Main refiner implementation
+│   ├── task_instruction.py                  # Task-specific instructions
+│   └── version.py
+├── scripts
+│   ├── evaluation                           # Evaluation scripts
+│   │   ├── find_correct_incorrect.py
+│   │   ├── run_eval_flashrag.py             # FlashRAG evaluation
+│   │   ├── run_eval.py                      # Standalone vLLM evaluation
+│   │   ├── run_eval.sh                      # Main evaluation launcher
+│   │   ├── sample_docs.json                 # Sample documents for testing
+│   │   └── simple_smoke_test.py
+│   ├── training                             # Training scripts
+│   │   ├── training_data                    # Training data constructed in this project
+│   │   ├── build_training_data.py           # script for training data construction
+│   │   ├── inference_benchmark_wandb.py
+│   │   ├── train_config_step{1,2,3}_full.yaml  # full finetuning config
+│   │   ├── train_config_step{1,2,3}_qlora.yaml # qlora finetuning config
+│   │   ├── train_config_step{1,2,3}.yaml       # lora finetuning config
+│   └── quick_start.py
+├── training_data_construction      # training data construction pipeline
+│   ├── LongRefiner                 # modified LongRefiner for training data construction
+│   │   ├── assets
+│   │   ├── longrefiner
+│   │   ├── longrefiner.egg-info
+│   │   ├── scripts
+│   │   ├── LICENSE
+│   │   ├── README.md
+│   │   ├── requirements.txt
+│   │   └── setup.py
+│   ├── build_index_bm25.sh         # shell script for building bm25 index
+│   ├── get_training_data.py        # script for training data construction
+│   ├── retrieve_result.py          # script for getting retrieval result
+│   └── transform_data.py
+├── LICENSE
+├── pyproject.toml      # Project dependencies (uv)
+├── README.md           # This file
+├── run_hpc.sh          # HPC cluster execution script
+└── uv.lock
 ```
 
 ### Key Files
+
+**Training Data Construction**
+- `training_data_construction/LongRefiner` - Modified LongRefiner code for training data construction
+-  `training_data_construction/get_training_data.py` - python script that is used for training data construction
+-  `training_data_construction/build_index_bm25.sh` - shell script that is used for building retrieval index using bm25.
+-  `training_data_construction/retrieve_result.py` - python script that is used for building the retrieval result for training and evaluation dataset.
+
+**Training Pipeline**
+- `scripts/training/train_config_step{1,2,3}_full.yaml` - LLamaFactory training configs for full finetuning
+- `scripts/training/train_config_step{1,2,3}.yaml` - LLamaFactory training configs for lora finetuning
+- `scripts/training/train_config_step{1,2,3}_qlora.yaml` - LLamaFactory training configs for qlora finetuninig
 
 **Evaluation Pipeline:**
 - `run_hpc.sh` - Automated HPC execution script
@@ -191,11 +250,11 @@ LongRefiner/
 - `model/step{1,2,3}_model/` - LoRA adapters (FP16)
 - `model/step{1,2,3}_model_qlora/` - QLoRA adapters (4-bit NF4)
 
-**Please note that the model checkpoints are not included in this repository due to size constraints. You can download them from the provided link.**
+**Please note that the model checkpoints are not included in this repository due to size constraints. You can download them from this [link](https://drive.google.com/file/d/14bi0X57HhMNUqoq_1roB36VrY0c425DG/view?pli=1).**
 
 ---
 
-## 🛠️ Installation
+## 🛠️ Installation for LongRefiner
 
 This project uses [`uv`](https://github.com/astral-sh/uv) for fast, reliable package management.
 
@@ -328,18 +387,6 @@ print(json.dumps(refined_result, indent=2, ensure_ascii=False))
 ## Training
 
 ### Prerequisites
-
-Install [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) for training:
-
-```bash
-git clone --depth 1 https://github.com/hiyouga/LLaMA-Factory.git
-cd LLaMA-Factory
-pip install -e ".[torch,metrics]"
-```
-
-### Training Data Construction
-### Prerequisites
-
 - Install [FlashRAG](https://github.com/RUC-NLPIR/FlashRAG.git) for data and index building
 - Follow the instruction of FlashRAG to prepare HotpotQA's training and evaluation data, as well as their retrieval result.
 - Install LongRefiner modified for training data construction from source by:
@@ -350,13 +397,23 @@ cd LongRefiner
 pip install -e .
 ```
 
-You can construct the training data using the script:
+- Install [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) for training:
+
+```bash
+git clone --depth 1 https://github.com/hiyouga/LLaMA-Factory.git
+cd LLaMA-Factory
+pip install -e ".[torch,metrics]"
+```
+
+### Training Data Construction
+
+Once download the data from FlashRAG and prepare the retrieval result for them, you can construct the training data using the script:
 
 ```bash
 python training_data_construction/get_training_data.py
 ```
 
-We provide the training data constructed in our work under [scripts/training/training_data](https://github.com/szjiozi/HPML_Project/tree/main/scripts/training/training_data)
+We provide the training data constructed in our work under [scripts/training/training_data](https://github.com/szjiozi/HPML_Project/tree/main/scripts/training/training_data).
 
 ### Training Pipeline
 
@@ -499,7 +556,23 @@ uv run python scripts/evaluation/find_correct_incorrect.py
 
 ---
 
-## Results
+## Training Results
+| Method | Step1 Peak VRAM | Step1 Throughput | Step2 Peak VRAM | Step2 Throughput | Step3 Peak VRAM | Step3 Throughput |
+|--------|------------------|------------------|------------------|------------------|------------------|------------------|
+| Full   | 23.7GB           | 43.39            | 32.6GB           | 5.82             | 35.9GB           | 24.92            |
+| LoRa   | 16.8GB           | 37.47            | 40.7GB           | 3.39             | 40.8GB           | 19.97            |
+| QLoRa  | 16.3GB           | 25.88            | 39.4GB           | 2.19             | 40.7GB           | 12.76            |
+
+Train report from wandb can be seen at [this project page](https://wandb.ai/jc13140-new-york-university/llamafactory)
+
+### Key Observations
+- **Short-text training (Step 1).**
+ LoRA and QLoRA substantially reduce peak VRAM usage compared to full fine-tuning, albeit with slower training throughput. This indicates that PEFT methods are effective for memory savings when sequence lengths are short and parameters dominate memory footprint.
+- **Long-text training (Step 2 and Step 3).**
+ Contrary to common expectations, LoRA and QLoRA exhibit higher peak VRAM usage than full fine-tuning in long-sequence settings. This suggests that, for small models and long-context inputs, activation memory rather than parameter memory becomes the primary bottleneck, and the additional activation paths (LoRA) or dequantization buffers (QLoRA) can outweigh parameter-level savings.
+
+
+## Evaluation Results
 
 ### Performance Comparison (HotpotQA, 1000 samples)
 
@@ -590,6 +663,13 @@ QLoRA (0.5B):  **placeholder**
 3. **Student models (0.5B) are viable alternatives** to teacher models (3B):
    - Suitable for resource-constrained deployments
    - Maintain competitive performance on long-context RAG tasks
+  
+4. **PEFT may not be the best option for long text training for small models**
+   - Both LoRA and QLoRA exhibit higher peak VRAM than full fine-tuning when training on long-context inputs.
+   - Their training throughput is also consistently lower.
+   - These findings suggest that in long-sequence settings, where activation memory dominates, the additional computation paths in LoRA and the dequantization overhead in QLoRA can outweigh their parameter-level memory savings.
+   - These findings are consistent with observations in the recent PEFT literature [ACTIVATIONS ARE NOT CHEAP FOR LORA, WEIGHTS ARE](https://openreview.net/pdf?id=3ylNuZXtMg)
+
 
 ### Recommendations
 
@@ -598,6 +678,7 @@ QLoRA (0.5B):  **placeholder**
 - Use **Base (3B)** only when maximum accuracy is critical
 
 **For Future Research:**
+- Investigate how to decrease the activation bottleneck for small LLM training
 - Investigate LoRA inference speed bottleneck
 - Explore mixed-precision deployment (e.g., INT8 for some layers)
 - Test on additional datasets (NQ, TriviaQA, ASQA, ELI5)
